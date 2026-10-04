@@ -45,7 +45,7 @@ app.get('/', (req, res) => {
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 const POSTER_BASE = 'https://image.tmdb.org/t/p/w342';
-const POOL_KEY = 'moviecup:pool:v1';
+const POOL_KEY = 'moviecup:pool:v2'; // v2: 풀 중복 제거 로직 추가로 캐시 키 변경 (이전 캐시 무효화)
 const POOL_SIZE = 1000; // 20개 × 50페이지
 const MIN_VOTE_COUNT = 1000; // 평점 상위이면서 "많이 본" 작품 위주로. 너무 낮으면 무명작이 상위권에 낄 수 있어요.
 
@@ -62,6 +62,9 @@ const redis = new Redis({
 });
 
 async function fetchTmdbPage(page) {
+  // vote_average만으로 정렬하면 동점작이 많아서 페이지 경계에서 같은 영화가
+  // 여러 페이지에 걸쳐 중복으로 나올 수 있어요. vote_count를 2차 정렬 기준으로
+  // 추가해서 페이지 순서를 안정적으로 만들어요(중복 축소용 — 완전히 막아주진 않음).
   const url = `${TMDB_BASE}/discover/movie?api_key=${TMDB_API_KEY}&language=ko-KR&sort_by=vote_average.desc&vote_count.gte=${MIN_VOTE_COUNT}&page=${page}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`TMDB API error: ${res.status}`);
@@ -76,6 +79,7 @@ async function ensureMoviePool() {
   if (cached) return cached;
 
   console.log('영화 풀이 없어서 TMDB에서 새로 가져와요. 1~2분 정도 걸릴 수 있어요...');
+  const seenIds = new Set();
   const movies = [];
   const totalPages = Math.ceil(POOL_SIZE / 20);
 
@@ -83,6 +87,8 @@ async function ensureMoviePool() {
     const data = await fetchTmdbPage(page);
     for (const m of data.results || []) {
       if (!m.poster_path) continue; // 포스터 없는 작품은 제외
+      if (seenIds.has(m.id)) continue; // TMDB 페이지 경계 중복 방지 (동점작이 여러 페이지에 걸쳐 나오는 문제)
+      seenIds.add(m.id);
       movies.push({
         id: m.id,
         title: m.title,
@@ -97,7 +103,7 @@ async function ensureMoviePool() {
 
   const pool = movies.slice(0, POOL_SIZE);
   await redis.set(POOL_KEY, pool);
-  console.log(`영화 풀 ${pool.length}편 캐싱 완료`);
+  console.log(`영화 풀 ${pool.length}편 캐싱 완료 (중복 제거됨)`);
   return pool;
 }
 
@@ -107,7 +113,15 @@ app.get('/api/movies/random16', async (req, res) => {
     if (!pool || pool.length < 16) {
       return res.status(503).json({ error: '영화 목록을 아직 준비 중이에요. 잠시 후 다시 시도해주세요.' });
     }
-    const shuffled = pool.slice().sort(() => Math.random() - 0.5);
+    // 캐시된 풀에 혹시 중복 id가 남아있어도 한 번의 뽑기에서 같은 영화가
+    // 두 번 나오지 않도록 여기서도 한 번 더 방어적으로 걸러줘요.
+    const seen = new Set();
+    const uniquePool = pool.filter((m) => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    });
+    const shuffled = uniquePool.slice().sort(() => Math.random() - 0.5);
     res.json({ movies: shuffled.slice(0, 16) });
   } catch (err) {
     console.error('random16 error:', err);
