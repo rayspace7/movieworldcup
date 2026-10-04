@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>나만의 명작영화 월드컵</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700;900&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0E0D12;
+    --surface:#17151C;
+    --surface-soft:#1F1C26;
+    --gold:#D4AF37;
+    --gold-deep:#A9832A;
+    --gold-soft:#4A3F22;
+    --ink:#F3EFE6;
+    --ink-soft:#9C97A8;
+    --ink-faint:#6B6678;
+    --line:#2A2732;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0; height:100%;}
+  body{
+    min-height:100dvh;
+    background:var(--bg);
+    font-family:'Noto Sans KR', sans-serif;
+    color:var(--ink);
+  }
+  .phone{
+    width:100%;
+    height:100dvh;
+    background:var(--bg);
+    overflow:hidden;
+    position:relative;
+    display:flex;
+    flex-direction:column;
+  }
+  .screen{
+    display:none;
+    flex-direction:column;
+    flex:1;
+    opacity:0;
+    transform:translateY(10px);
+    transition:opacity .4s ease, transform .4s ease;
+  }
+  .screen.active{display:flex;}
+  .screen.show{opacity:1; transform:translateY(0);}
+
+  #screen-start{ align-items:center; justify-content:center; padding:32px 28px; text-align:center; }
+  .start-emblem{
+    width:76px; height:76px;
+    border:2px solid var(--gold);
+    border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:30px;
+    margin-bottom:22px;
+  }
+  h1{
+    font-family:'Noto Serif KR', serif;
+    font-weight:900;
+    font-size:26px;
+    line-height:1.4;
+    margin:0 0 12px;
+    color:var(--ink);
+  }
+  .start-sub{
+    font-size:13.5px;
+    color:var(--ink-soft);
+    line-height:1.6;
+    margin-bottom:34px;
+  }
+  .cta{
+    width:100%;
+    max-width:260px;
+    border:none;
+    border-radius:999px;
+    padding:15px 0;
+    font-family:'Noto Serif KR', serif;
+    font-weight:700;
+    font-size:15.5px;
+    color:#1A1610;
+    background:linear-gradient(135deg, #F3D77A, var(--gold), var(--gold-deep));
+    cursor:pointer;
+    box-shadow:0 12px 26px rgba(212,175,55,0.28);
+  }
+  .cta:active{ transform:scale(0.98); }
+  .cta.ghost{
+    background:transparent;
+    color:var(--gold);
+    border:1.4px solid var(--gold-deep);
+    box-shadow:none;
+  }
+  .error-msg{ font-size:12px; color:#E0665A; margin-top:14px; min-height:16px; }
+
+  #screen-loading{ align-items:center; justify-content:center; text-align:center; }
+  .film-spin{
+    width:40px; height:40px;
+    border:3px solid var(--surface-soft);
+    border-top-color:var(--gold);
+    border-radius:50%;
+    animation:spin 0.9s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .loading-text{ margin-top:16px; font-size:13.5px; color:var(--ink-soft); }
+
+  #screen-round{ padding:0; }
+  .round-top{
+    padding:16px 20px 10px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .round-label{
+    font-family:'Noto Serif KR', serif;
+    font-weight:700;
+    font-size:14px;
+    color:var(--gold);
+  }
+  .round-progress{ font-size:11.5px; color:var(--ink-faint); }
+  .matchup{
+    flex:1;
+    display:flex;
+    gap:2px;
+    padding:0 2px 2px;
+  }
+  .movie-card{
+    flex:1;
+    position:relative;
+    border-radius:14px;
+    overflow:hidden;
+    cursor:pointer;
+    background:var(--surface-soft);
+  }
+  .movie-card img{
+    width:100%; height:100%;
+    object-fit:cover;
+    display:block;
+  }
+  .movie-overlay{
+    position:absolute; left:0; right:0; bottom:0;
+    padding:16px 12px 14px;
+    background:linear-gradient(to top, rgba(0,0,0,0.88), rgba(0,0,0,0.15) 70%, transparent);
+  }
+  .movie-title{
+    font-family:'Noto Serif KR', serif;
+    font-weight:700;
+    font-size:14.5px;
+    color:#fff;
+    line-height:1.35;
+    margin-bottom:3px;
+  }
+  .movie-year{ font-size:11px; color:var(--ink-soft); }
+  .vs-mark{
+    position:absolute; top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    width:34px; height:34px;
+    background:var(--bg);
+    border:1.5px solid var(--gold);
+    border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Noto Serif KR', serif;
+    font-size:10.5px;
+    color:var(--gold);
+    z-index:5;
+    pointer-events:none;
+  }
+
+  #screen-result{ align-items:center; padding:28px 24px; text-align:center; overflow-y:auto; }
+  .result-eyebrow{ font-size:12px; color:var(--gold); letter-spacing:0.08em; margin-bottom:8px; }
+  .winner-poster{
+    width:150px; aspect-ratio:2/3;
+    border-radius:14px;
+    object-fit:cover;
+    box-shadow:0 20px 40px rgba(0,0,0,0.5);
+    margin-bottom:16px;
+    border:1.5px solid var(--gold-soft);
+  }
+  .winner-title{
+    font-family:'Noto Serif KR', serif;
+    font-weight:900;
+    font-size:21px;
+    color:var(--ink);
+    margin-bottom:4px;
+  }
+  .winner-year{ font-size:12.5px; color:var(--ink-soft); margin-bottom:22px; }
+  .stat-box{
+    width:100%;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:16px 18px;
+    margin-bottom:14px;
+    text-align:left;
+  }
+  .stat-label{ font-size:11.5px; color:var(--ink-faint); margin-bottom:4px; }
+  .stat-value{ font-family:'Noto Serif KR', serif; font-size:16px; color:var(--gold); font-weight:700; }
+  .leaderboard{ width:100%; text-align:left; margin-bottom:22px; }
+  .lb-title{ font-size:12px; color:var(--ink-faint); margin-bottom:8px; }
+  .lb-row{
+    display:flex; align-items:center; gap:10px;
+    padding:8px 0;
+    border-bottom:1px solid var(--line);
+    font-size:13px;
+  }
+  .lb-rank{ font-family:'Noto Serif KR', serif; color:var(--gold); width:18px; font-weight:700; }
+  .lb-name{ flex:1; color:var(--ink); }
+  .lb-wins{ color:var(--ink-faint); font-size:11.5px; }
+
+  .ad-modal{
+    position:fixed; inset:0; z-index:100;
+    background:rgba(0,0,0,0.75);
+    display:none; align-items:center; justify-content:center;
+    padding:24px;
+  }
+  .ad-modal.show{ display:flex; }
+  .ad-modal-card{
+    width:100%; max-width:300px;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:20px;
+    padding:30px 24px 24px;
+    text-align:center;
+  }
+  .ad-modal-emoji{ font-size:36px; margin-bottom:10px; }
+  .ad-modal-title{ font-family:'Noto Serif KR', serif; font-weight:700; font-size:17px; color:var(--ink); margin-bottom:8px; }
+  .ad-modal-desc{ font-size:13px; color:var(--ink-soft); line-height:1.55; margin-bottom:20px; }
+  .ad-modal-btn{
+    width:100%; border:none; border-radius:999px; padding:13px 0;
+    font-family:'Noto Serif KR', serif; font-weight:700; font-size:14.5px;
+    color:#1A1610; background:linear-gradient(135deg, #F3D77A, var(--gold));
+    cursor:pointer;
+  }
+</style>
+</head>
+<body>
+
+<div class="phone">
+
+  <div class="screen active" id="screen-start">
+    <div class="start-emblem">🎬</div>
+    <h1>나만의 명작영화<br>월드컵</h1>
+    <div class="start-sub">평점 상위 1000편 중 16편이 무작위로 등장해요.<br>16강부터 결승까지, 최고의 한 편을 골라보세요.</div>
+    <button class="cta" onclick="startTournament()">시작하기</button>
+    <div class="error-msg" id="startError"></div>
+  </div>
+
+  <div class="screen" id="screen-loading">
+    <div class="film-spin"></div>
+    <div class="loading-text" id="loadingText">필름을 고르는 중...</div>
+  </div>
+
+  <div class="screen" id="screen-round">
+    <div class="round-top">
+      <div class="round-label" id="roundLabel">16강</div>
+      <div class="round-progress" id="roundProgress">1 / 8매치</div>
+    </div>
+    <div class="matchup">
+      <div class="movie-card" id="cardA" onclick="choose('A')">
+        <img id="imgA" src="" alt="">
+        <div class="movie-overlay">
+          <div class="movie-title" id="titleA"></div>
+          <div class="movie-year" id="yearA"></div>
+        </div>
+      </div>
+      <div class="vs-mark">VS</div>
+      <div class="movie-card" id="cardB" onclick="choose('B')">
+        <img id="imgB" src="" alt="">
+        <div class="movie-overlay">
+          <div class="movie-title" id="titleB"></div>
+          <div class="movie-year" id="yearB"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen" id="screen-result">
+    <div class="result-eyebrow">🏆 당신의 우승작</div>
+    <img class="winner-poster" id="winnerPoster" src="" alt="">
+    <div class="winner-title" id="winnerTitle"></div>
+    <div class="winner-year" id="winnerYear"></div>
+
+    <div class="stat-box">
+      <div class="stat-label">이 영화를 우승으로 뽑은 사람</div>
+      <div class="stat-value" id="myWinPct">-</div>
+    </div>
+
+    <div class="leaderboard">
+      <div class="lb-title">역대 우승 TOP 10</div>
+      <div id="leaderboardList"></div>
+    </div>
+
+    <button class="cta" onclick="playAgain()">다시 하기</button>
+    <div class="error-msg" id="resultError"></div>
+  </div>
+
+  <div class="ad-modal" id="adModal">
+    <div class="ad-modal-card">
+      <div class="ad-modal-emoji">🎬</div>
+      <div class="ad-modal-title">다음 상영 전 안내</div>
+      <div class="ad-modal-desc">짧은 광고를 보고<br>새 토너먼트를 시작할게요</div>
+      <button class="ad-modal-btn" id="adModalConfirm">확인하고 광고 보기</button>
+    </div>
+  </div>
+
+</div>
+
+<script type="module">
+import { loadFullScreenAd, showFullScreenAd } from '@apps-in-toss/web-framework';
+
+function safeIsSupported(fn){
+  try { return !!fn(); } catch (e) { return false; }
+}
+
+// ⚠️ 배포한 백엔드의 실제 주소로 바꿔주세요.
+const API_BASE = "https://YOUR-BACKEND-DOMAIN.com";
+
+let currentScreen = 'screen-start';
+let bracket = [];
+let nextWinners = [];
+let matchIndex = 0;
+let roundName = '16강';
+let playCount = 0;
+let sessionMovies = [];
+
+const ROUND_NAMES = { 16: '16강', 8: '8강', 4: '4강', 2: '결승' };
+
+const loadingPhrases = [
+  "필름을 고르는 중...",
+  "매표소 줄을 서는 중...",
+  "팝콘을 튀기는 중...",
+  "상영관 불을 끄는 중...",
+];
+
+window.addEventListener('DOMContentLoaded', ()=>{
+  requestAnimationFrame(()=> requestAnimationFrame(()=>{
+    document.getElementById(currentScreen).classList.add('show');
+  }));
+  history.replaceState({ screen: 'screen-start' }, '');
+});
+
+window.addEventListener('popstate', (e) => {
+  switchScreen(e.state?.screen || 'screen-start');
+});
+
+function switchScreen(id){
+  if (id === currentScreen) return;
+  document.getElementById(currentScreen).classList.remove('active','show');
+  const next = document.getElementById(id);
+  next.classList.add('active');
+  requestAnimationFrame(()=> requestAnimationFrame(()=> next.classList.add('show')));
+  currentScreen = id;
+}
+function goTo(id){ history.pushState({ screen: id }, ''); switchScreen(id); }
+function replaceWith(id){ history.replaceState({ screen: id }, ''); switchScreen(id); }
+
+const AD_GROUP_ID_INTERSTITIAL = "ait.dev.YOUR_TEST_AD_GROUP_ID";
+let interstitialLoaded = false;
+
+function preloadInterstitial(){
+  if (!safeIsSupported(() => loadFullScreenAd.isSupported())) return;
+  interstitialLoaded = false;
+  loadFullScreenAd({
+    options: { adGroupId: AD_GROUP_ID_INTERSTITIAL },
+    onEvent: (e) => { if (e.type === 'loaded') interstitialLoaded = true; },
+    onError: (e) => console.error('전면 광고 로드 실패:', e),
+  });
+}
+preloadInterstitial();
+
+function withInterstitialIfNeeded(proceed){
+  const shouldShowAd = interstitialLoaded && safeIsSupported(() => showFullScreenAd.isSupported());
+  if (!shouldShowAd) { proceed(); return; }
+  showFullScreenAd({
+    options: { adGroupId: AD_GROUP_ID_INTERSTITIAL },
+    onEvent: (e) => {
+      if (e.type === 'dismissed' || e.type === 'failedToShow') { preloadInterstitial(); proceed(); }
+    },
+    onError: (e) => { console.error('전면 광고 노출 실패:', e); preloadInterstitial(); proceed(); },
+  });
+}
+
+document.getElementById('adModalConfirm').addEventListener('click', () => {
+  document.getElementById('adModal').classList.remove('show');
+  withInterstitialIfNeeded(beginNewTournament);
+});
+
+async function fetchRandom16(){
+  const response = await fetch(`${API_BASE}/api/movies/random16`, {
+    signal: AbortSignal.timeout(60000)
+  });
+  if (!response.ok) {
+    let message = `영화 목록을 불러오지 못했어요: ${response.status}`;
+    try { const b = await response.json(); if (b?.error) message = b.error; } catch(_){}
+    throw new Error(message);
+  }
+  const data = await response.json();
+  return data.movies;
+}
+
+async function submitResult(winner){
+  const response = await fetch(`${API_BASE}/api/movies/result`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ winnerId: winner.id, winnerTitle: winner.title }),
+    signal: AbortSignal.timeout(20000)
+  });
+  if (!response.ok) throw new Error(`결과 저장에 실패했어요: ${response.status}`);
+  return await response.json();
+}
+
+async function startTournament(){
+  document.getElementById('startError').textContent = '';
+  goTo('screen-loading');
+  let i = 0;
+  const phraseEl = document.getElementById('loadingText');
+  const interval = setInterval(()=>{
+    i = (i+1) % loadingPhrases.length;
+    phraseEl.textContent = loadingPhrases[i];
+  }, 1300);
+
+  try{
+    const movies = await fetchRandom16();
+    clearInterval(interval);
+    bracket = movies;
+    sessionMovies = movies;
+    nextWinners = [];
+    matchIndex = 0;
+    roundName = ROUND_NAMES[bracket.length] || `${bracket.length}강`;
+    renderMatch();
+    replaceWith('screen-round');
+  }catch(e){
+    clearInterval(interval);
+    console.error(e);
+    document.getElementById('startError').textContent = e.message || '문제가 생겼어요. 다시 시도해주세요';
+    history.back();
+  }
+}
+
+function renderMatch(){
+  const a = bracket[matchIndex*2];
+  const b = bracket[matchIndex*2+1];
+  document.getElementById('imgA').src = a.poster;
+  document.getElementById('titleA').textContent = a.title;
+  document.getElementById('yearA').textContent = a.year;
+  document.getElementById('imgB').src = b.poster;
+  document.getElementById('titleB').textContent = b.title;
+  document.getElementById('yearB').textContent = b.year;
+  document.getElementById('roundLabel').textContent = roundName;
+  document.getElementById('roundProgress').textContent = `${matchIndex+1} / ${bracket.length/2}매치`;
+}
+
+async function choose(which){
+  const picked = which === 'A' ? bracket[matchIndex*2] : bracket[matchIndex*2+1];
+  nextWinners.push(picked);
+  matchIndex++;
+
+  if (matchIndex * 2 < bracket.length){
+    renderMatch();
+    return;
+  }
+
+  if (nextWinners.length === 1){
+    await finishTournament(nextWinners[0]);
+    return;
+  }
+
+  bracket = nextWinners;
+  nextWinners = [];
+  matchIndex = 0;
+  roundName = ROUND_NAMES[bracket.length] || `${bracket.length}강`;
+  renderMatch();
+}
+
+async function finishTournament(winner){
+  document.getElementById('winnerPoster').src = winner.poster;
+  document.getElementById('winnerTitle').textContent = winner.title;
+  document.getElementById('winnerYear').textContent = winner.year;
+  document.getElementById('resultError').textContent = '';
+
+  try{
+    const stats = await submitResult(winner);
+    document.getElementById('myWinPct').textContent = `${stats.myWinPct}% (${stats.myWinCount}회 우승)`;
+
+    const idToInfo = new Map();
+    sessionMovies.forEach(m => idToInfo.set(String(m.id), m));
+    idToInfo.set(String(winner.id), winner);
+
+    const listEl = document.getElementById('leaderboardList');
+    listEl.innerHTML = stats.leaderboard.map((row, i) => {
+      const info = idToInfo.get(String(row.movieId));
+      const name = info ? info.title : `영화 #${row.movieId}`;
+      return `<div class="lb-row"><div class="lb-rank">${i+1}</div><div class="lb-name">${name}</div><div class="lb-wins">${row.wins}회</div></div>`;
+    }).join('');
+  }catch(e){
+    console.error(e);
+    document.getElementById('resultError').textContent = '통계를 불러오지 못했어요';
+  }
+
+  playCount++;
+  replaceWith('screen-result');
+}
+
+function beginNewTournament(){
+  switchScreen('screen-start');
+  history.replaceState({ screen: 'screen-start' }, '');
+  startTournament();
+}
+
+function playAgain(){
+  if (playCount >= 1){
+    document.getElementById('adModal').classList.add('show');
+  } else {
+    beginNewTournament();
+  }
+}
+
+window.startTournament = startTournament;
+window.choose = choose;
+window.playAgain = playAgain;
+</script>
+</body>
+</html>

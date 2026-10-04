@@ -1,0 +1,18 @@
+{
+  "name": "moviecup-server",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "나만의 명작영화 월드컵 앱의 백엔드 API 서버 (TMDB + Upstash Redis)",
+  "main": "movies.js",
+  "scripts": {
+    "start": "node movies.js",
+    "build": "echo 'no build step needed'"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.39.0",
+    "express": "^5.2.1"
+  }
+}

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>나만의 명작영화 월드컵</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700;900&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>:root{--bg:#0e0d12;--surface:#17151c;--surface-soft:#1f1c26;--gold:#d4af37;--gold-deep:#a9832a;--gold-soft:#4a3f22;--ink:#f3efe6;--ink-soft:#9c97a8;--ink-faint:#6b6678;--line:#2a2732}*{box-sizing:border-box}html,body{height:100%;margin:0;padding:0}body{background:var(--bg);min-height:100dvh;color:var(--ink);font-family:Noto Sans KR,sans-serif}.phone{background:var(--bg);flex-direction:column;width:100%;height:100dvh;display:flex;position:relative;overflow:hidden}.screen{opacity:0;flex-direction:column;flex:1;transition:opacity .4s,transform .4s;display:none;transform:translateY(10px)}.screen.active{display:flex}.screen.show{opacity:1;transform:translateY(0)}#screen-start{text-align:center;justify-content:center;align-items:center;padding:32px 28px}.start-emblem{border:2px solid var(--gold);border-radius:50%;justify-content:center;align-items:center;width:76px;height:76px;margin-bottom:22px;font-size:30px;display:flex}h1{color:var(--ink);margin:0 0 12px;font-family:Noto Serif KR,serif;font-size:26px;font-weight:900;line-height:1.4}.start-sub{color:var(--ink-soft);margin-bottom:34px;font-size:13.5px;line-height:1.6}.cta{color:#1a1610;background:linear-gradient(135deg, #f3d77a, var(--gold), var(--gold-deep));cursor:pointer;border:none;border-radius:999px;width:100%;max-width:260px;padding:15px 0;font-family:Noto Serif KR,serif;font-size:15.5px;font-weight:700;box-shadow:0 12px 26px #d4af3747}.cta:active{transform:scale(.98)}.cta.ghost{color:var(--gold);border:1.4px solid var(--gold-deep);box-shadow:none;background:0 0}.error-msg{color:#e0665a;min-height:16px;margin-top:14px;font-size:12px}#screen-loading{text-align:center;justify-content:center;align-items:center}.film-spin{border:3px solid var(--surface-soft);border-top-color:var(--gold);border-radius:50%;width:40px;height:40px;animation:.9s linear infinite spin}@keyframes spin{to{transform:rotate(360deg)}}.loading-text{color:var(--ink-soft);margin-top:16px;font-size:13.5px}#screen-round{padding:0}.round-top{justify-content:space-between;align-items:center;padding:16px 20px 10px;display:flex}.round-label{color:var(--gold);font-family:Noto Serif KR,serif;font-size:14px;font-weight:700}.round-progress{color:var(--ink-faint);font-size:11.5px}.matchup{flex:1;gap:2px;padding:0 2px 2px;display:flex}.movie-card{cursor:pointer;background:var(--surface-soft);border-radius:14px;flex:1;position:relative;overflow:hidden}.movie-card img{object-fit:cover;width:100%;height:100%;display:block}.movie-overlay{background:linear-gradient(#0000,#00000026 30%,#000000e0);padding:16px 12px 14px;position:absolute;bottom:0;left:0;right:0}.movie-title{color:#fff;margin-bottom:3px;font-family:Noto Serif KR,serif;font-size:14.5px;font-weight:700;line-height:1.35}.movie-year{color:var(--ink-soft);font-size:11px}.vs-mark{background:var(--bg);border:1.5px solid var(--gold);width:34px;height:34px;color:var(--gold);z-index:5;pointer-events:none;border-radius:50%;justify-content:center;align-items:center;font-family:Noto Serif KR,serif;font-size:10.5px;display:flex;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}#screen-result{text-align:center;align-items:center;padding:28px 24px;overflow-y:auto}.result-eyebrow{color:var(--gold);letter-spacing:.08em;margin-bottom:8px;font-size:12px}.winner-poster{aspect-ratio:2/3;object-fit:cover;border:1.5px solid var(--gold-soft);border-radius:14px;width:150px;margin-bottom:16px;box-shadow:0 20px 40px #00000080}.winner-title{color:var(--ink);margin-bottom:4px;font-family:Noto Serif KR,serif;font-size:21px;font-weight:900}.winner-year{color:var(--ink-soft);margin-bottom:22px;font-size:12.5px}.stat-box{background:var(--surface);border:1px solid var(--line);text-align:left;border-radius:14px;width:100%;margin-bottom:14px;padding:16px 18px}.stat-label{color:var(--ink-faint);margin-bottom:4px;font-size:11.5px}.stat-value{color:var(--gold);font-family:Noto Serif KR,serif;font-size:16px;font-weight:700}.leaderboard{text-align:left;width:100%;margin-bottom:22px}.lb-title{color:var(--ink-faint);margin-bottom:8px;font-size:12px}.lb-row{border-bottom:1px solid var(--line);align-items:center;gap:10px;padding:8px 0;font-size:13px;display:flex}.lb-rank{color:var(--gold);width:18px;font-family:Noto Serif KR,serif;font-weight:700}.lb-name{color:var(--ink);flex:1}.lb-wins{color:var(--ink-faint);font-size:11.5px}.ad-modal{z-index:100;background:#000000bf;justify-content:center;align-items:center;padding:24px;display:none;position:fixed;inset:0}.ad-modal.show{display:flex}.ad-modal-card{background:var(--surface);border:1px solid var(--line);text-align:center;border-radius:20px;width:100%;max-width:300px;padding:30px 24px 24px}.ad-modal-emoji{margin-bottom:10px;font-size:36px}.ad-modal-title{color:var(--ink);margin-bottom:8px;font-family:Noto Serif KR,serif;font-size:17px;font-weight:700}.ad-modal-desc{color:var(--ink-soft);margin-bottom:20px;font-size:13px;line-height:1.55}.ad-modal-btn{color:#1a1610;background:linear-gradient(135deg, #f3d77a, var(--gold));cursor:pointer;border:none;border-radius:999px;width:100%;padding:13px 0;font-family:Noto Serif KR,serif;font-size:14.5px;font-weight:700}</style>
+  <script type="module" crossorigin src="/assets/index-DfuWgwZG.js"></script>
+</head>
+<body>
+
+<div class="phone">
+
+  <div class="screen active" id="screen-start">
+    <div class="start-emblem">🎬</div>
+    <h1>나만의 명작영화<br>월드컵</h1>
+    <div class="start-sub">평점 상위 1000편 중 16편이 무작위로 등장해요.<br>16강부터 결승까지, 최고의 한 편을 골라보세요.</div>
+    <button class="cta" onclick="startTournament()">시작하기</button>
+    <div class="error-msg" id="startError"></div>
+  </div>
+
+  <div class="screen" id="screen-loading">
+    <div class="film-spin"></div>
+    <div class="loading-text" id="loadingText">필름을 고르는 중...</div>
+  </div>
+
+  <div class="screen" id="screen-round">
+    <div class="round-top">
+      <div class="round-label" id="roundLabel">16강</div>
+      <div class="round-progress" id="roundProgress">1 / 8매치</div>
+    </div>
+    <div class="matchup">
+      <div class="movie-card" id="cardA" onclick="choose('A')">
+        <img id="imgA" src="" alt="">
+        <div class="movie-overlay">
+          <div class="movie-title" id="titleA"></div>
+          <div class="movie-year" id="yearA"></div>
+        </div>
+      </div>
+      <div class="vs-mark">VS</div>
+      <div class="movie-card" id="cardB" onclick="choose('B')">
+        <img id="imgB" src="" alt="">
+        <div class="movie-overlay">
+          <div class="movie-title" id="titleB"></div>
+          <div class="movie-year" id="yearB"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen" id="screen-result">
+    <div class="result-eyebrow">🏆 당신의 우승작</div>
+    <img class="winner-poster" id="winnerPoster" src="" alt="">
+    <div class="winner-title" id="winnerTitle"></div>
+    <div class="winner-year" id="winnerYear"></div>
+
+    <div class="stat-box">
+      <div class="stat-label">이 영화를 우승으로 뽑은 사람</div>
+      <div class="stat-value" id="myWinPct">-</div>
+    </div>
+
+    <div class="leaderboard">
+      <div class="lb-title">역대 우승 TOP 10</div>
+      <div id="leaderboardList"></div>
+    </div>
+
+    <button class="cta" onclick="playAgain()">다시 하기</button>
+    <div class="error-msg" id="resultError"></div>
+  </div>
+
+  <div class="ad-modal" id="adModal">
+    <div class="ad-modal-card">
+      <div class="ad-modal-emoji">🎬</div>
+      <div class="ad-modal-title">다음 상영 전 안내</div>
+      <div class="ad-modal-desc">짧은 광고를 보고<br>새 토너먼트를 시작할게요</div>
+      <button class="ad-modal-btn" id="adModalConfirm">확인하고 광고 보기</button>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
