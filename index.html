@@ -105,23 +105,34 @@
   @keyframes spin{ to{ transform:rotate(360deg); } }
   .loading-text{ margin-top:16px; font-size:13.5px; color:var(--ink-soft); }
 
-  #screen-round{ padding:0; }
-  .round-top{
-    padding:16px 20px 10px;
-    display:flex; align-items:center; justify-content:space-between;
+  #screen-round{ padding:0; position:relative; }
+  .round-progress{
+    position:absolute; top:14px; right:18px; z-index:3;
+    font-size:11.5px; color:var(--ink-faint);
+  }
+  .matchup{
+    flex:1;
+    position:relative;
+    display:flex;
+    gap:2px;
+    padding:0 2px 2px;
   }
   .round-label{
+    position:absolute;
+    left:50%;
+    transform:translateX(-50%);
+    top:40px;
+    z-index:6;
+    white-space:nowrap;
+    background:var(--surface);
+    border:1px solid var(--gold-deep);
+    border-radius:999px;
+    padding:6px 18px;
     font-family:'Noto Serif KR', serif;
     font-weight:700;
     font-size:14px;
     color:var(--gold);
-  }
-  .round-progress{ font-size:11.5px; color:var(--ink-faint); }
-  .matchup{
-    flex:1;
-    display:flex;
-    gap:2px;
-    padding:0 2px 2px;
+    box-shadow:0 6px 16px rgba(0,0,0,0.4);
   }
   .movie-card{
     flex:1;
@@ -129,27 +140,63 @@
     border-radius:14px;
     overflow:hidden;
     cursor:pointer;
-    background:var(--surface-soft);
+    background-color:#110F15;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:0 28px;
   }
-  .movie-card img{
-    width:100%; height:100%;
+  .movie-card::before, .movie-card::after{
+    content:"";
+    position:absolute; top:0; bottom:0; width:28px;
+    background-repeat:repeat-y;
+    background-size:28px auto;
+    z-index:1;
+  }
+  .movie-card::before{
+    left:0;
+    background-image:url(data:image/png;base64,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);
+  }
+  .movie-card::after{
+    right:0;
+    background-image:url(data:image/png;base64,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);
+  }
+  #cardB{ padding-left:0; }
+  #cardB::before{ display:none; }
+  .poster-wrap{
+    position:relative; z-index:2;
+    width:100%;
+    display:flex; flex-direction:column; align-items:center;
+  }
+  .poster-wrap img{
+    width:100%;
+    aspect-ratio:2/3;
     object-fit:cover;
+    border-radius:8px;
     display:block;
-  }
-  .movie-overlay{
-    position:absolute; left:0; right:0; bottom:0;
-    padding:16px 12px 14px;
-    background:linear-gradient(to top, rgba(0,0,0,0.88), rgba(0,0,0,0.15) 70%, transparent);
+    box-shadow:0 10px 24px rgba(0,0,0,0.45);
   }
   .movie-title{
+    margin-top:10px;
     font-family:'Noto Serif KR', serif;
     font-weight:700;
     font-size:14.5px;
     color:#fff;
-    line-height:1.35;
-    margin-bottom:3px;
+    line-height:1.3;
+    text-align:center;
   }
-  .movie-year{ font-size:11px; color:var(--ink-soft); }
+  .movie-year{ margin-top:2px; font-size:11px; color:var(--ink-soft); text-align:center; }
+  .swap-btn{
+    margin-top:8px;
+    background:transparent;
+    border:1px solid var(--gold-deep);
+    color:var(--gold);
+    font-size:10.5px;
+    padding:4px 11px;
+    border-radius:999px;
+    cursor:pointer;
+  }
+  .swap-btn:disabled{ opacity:0.45; cursor:default; }
   .vs-mark{
     position:absolute; top:50%; left:50%;
     transform:translate(-50%,-50%);
@@ -163,6 +210,33 @@
     color:var(--gold);
     z-index:5;
     pointer-events:none;
+  }
+  .round-popup{
+    position:fixed; inset:0; z-index:90;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(0,0,0,0);
+    opacity:0; pointer-events:none;
+    transition:opacity 0.25s, background-color 0.25s;
+  }
+  .round-popup.show{ opacity:1; background:rgba(0,0,0,0.6); }
+  .round-popup-card{
+    background:linear-gradient(135deg, #1D1A23, #100E14);
+    border:1.5px solid var(--gold);
+    border-radius:20px;
+    padding:24px 32px;
+    max-width:280px;
+    box-shadow:0 20px 50px rgba(0,0,0,0.6);
+    transform:scale(0.82);
+    transition:transform 0.25s;
+  }
+  .round-popup.show .round-popup-card{ transform:scale(1); }
+  .round-popup-text{
+    font-family:'Noto Serif KR', serif;
+    font-weight:900;
+    font-size:20px;
+    line-height:1.4;
+    color:var(--gold);
+    text-align:center;
   }
 
   #screen-result{ align-items:center; padding:28px 24px; text-align:center; overflow-y:auto; }
@@ -250,24 +324,24 @@
   </div>
 
   <div class="screen" id="screen-round">
-    <div class="round-top">
-      <div class="round-label" id="roundLabel">16강</div>
-      <div class="round-progress" id="roundProgress">1 / 8매치</div>
-    </div>
+    <div class="round-progress" id="roundProgress">1 / 8매치</div>
     <div class="matchup">
+      <div class="round-label" id="roundLabel">16강전</div>
       <div class="movie-card" id="cardA" onclick="choose('A')">
-        <img id="imgA" src="" alt="">
-        <div class="movie-overlay">
+        <div class="poster-wrap">
+          <img id="imgA" src="" alt="">
           <div class="movie-title" id="titleA"></div>
           <div class="movie-year" id="yearA"></div>
+          <button type="button" class="swap-btn" id="swapA" onclick="event.stopPropagation(); swapMovie('A')">다른 영화 선택</button>
         </div>
       </div>
       <div class="vs-mark">VS</div>
       <div class="movie-card" id="cardB" onclick="choose('B')">
-        <img id="imgB" src="" alt="">
-        <div class="movie-overlay">
+        <div class="poster-wrap">
+          <img id="imgB" src="" alt="">
           <div class="movie-title" id="titleB"></div>
           <div class="movie-year" id="yearB"></div>
+          <button type="button" class="swap-btn" id="swapB" onclick="event.stopPropagation(); swapMovie('B')">다른 영화 선택</button>
         </div>
       </div>
     </div>
@@ -293,6 +367,12 @@
     <div class="error-msg" id="resultError"></div>
   </div>
 
+  <div class="round-popup" id="roundPopup">
+    <div class="round-popup-card">
+      <div class="round-popup-text" id="roundPopupText"></div>
+    </div>
+  </div>
+
   <div class="ad-modal" id="adModal">
     <div class="ad-modal-card">
       <div class="ad-modal-emoji">🎬</div>
@@ -312,23 +392,76 @@ function safeIsSupported(fn){
 }
 
 // ⚠️ 배포한 백엔드의 실제 주소로 바꿔주세요.
-const API_BASE = "https://YOUR-BACKEND-DOMAIN.com";
+const API_BASE = "https://movieworldcup.onrender.com";
 
 let currentScreen = 'screen-start';
 let bracket = [];
 let nextWinners = [];
 let matchIndex = 0;
-let roundName = '16강';
+let roundName = '16강전';
 let playCount = 0;
 let sessionMovies = [];
 
-const ROUND_NAMES = { 16: '16강', 8: '8강', 4: '4강', 2: '결승' };
+const ROUND_NAMES = { 16: '16강전', 8: '8강전', 4: '4강전', 2: '결승' };
+const ROUND_POPUP_TEXT = { 8: '8강전!!', 4: '4강전!!', 2: '결승!!' };
+
+function showRoundPopup(text, duration = 850){
+  return new Promise((resolve) => {
+    const el = document.getElementById('roundPopup');
+    document.getElementById('roundPopupText').textContent = text;
+    el.classList.add('show');
+    setTimeout(() => {
+      el.classList.remove('show');
+      setTimeout(resolve, 250);
+    }, duration);
+  });
+}
+
+function positionRoundLabel(){
+  const img = document.getElementById('imgA');
+  const matchup = document.querySelector('.matchup');
+  const label = document.getElementById('roundLabel');
+  if (!img || !matchup || !label) return;
+  const imgRect = img.getBoundingClientRect();
+  const matchupRect = matchup.getBoundingClientRect();
+  if (imgRect.height === 0) return;
+  const top = imgRect.top - matchupRect.top - label.offsetHeight - 10;
+  label.style.top = Math.max(10, top) + 'px';
+}
+window.addEventListener('resize', positionRoundLabel);
 
 const loadingPhrases = [
   "필름을 고르는 중...",
   "매표소 줄을 서는 중...",
   "팝콘을 튀기는 중...",
   "상영관 불을 끄는 중...",
+  "필름 릴을 되감는 중...",
+  "스크린을 펼치는 중...",
+  "명작들을 한자리에 모으는 중...",
+  "트로피를 닦는 중...",
+  "심사위원을 호출하는 중...",
+  "레드카펫을 깔아보는 중...",
+  "관객석을 정리하는 중...",
+  "예고편을 돌려보는 중...",
+  "명대사를 추려보는 중...",
+  "포스터를 걸어두는 중...",
+  "영사기에 필름을 거는 중...",
+  "OST를 틀어보는 중...",
+  "주인공을 캐스팅하는 중...",
+  "조명을 맞추는 중...",
+  "엔딩 크레딧을 준비하는 중...",
+  "시나리오를 검토하는 중...",
+  "평점을 집계하는 중...",
+  "명장면을 추려내는 중...",
+  "극장 문을 여는 중...",
+  "토너먼트 대진표를 짜는 중...",
+  "커튼을 걷는 중...",
+  "좌석을 배정하는 중...",
+  "관람 매너를 안내하는 중...",
+  "음향을 점검하는 중...",
+  "무대 인사를 준비하는 중...",
+  "거의 다 됐어요, 조금만 기다려주세요...",
+  "로딩 시간이 오래 걸릴 수 있습니다...",
 ];
 
 window.addEventListener('DOMContentLoaded', ()=>{
@@ -397,6 +530,20 @@ async function fetchRandom16(){
   return data.movies;
 }
 
+let spareQueue = [];
+
+async function getSpareMovie(excludeIds){
+  for (let attempt = 0; attempt < 6; attempt++){
+    if (spareQueue.length === 0){
+      const batch = await fetchRandom16();
+      spareQueue.push(...batch);
+    }
+    const candidate = spareQueue.shift();
+    if (candidate && !excludeIds.has(candidate.id)) return candidate;
+  }
+  return null;
+}
+
 async function submitResult(winner){
   const response = await fetch(`${API_BASE}/api/movies/result`, {
     method: "POST",
@@ -425,7 +572,7 @@ async function startTournament(){
     sessionMovies = movies;
     nextWinners = [];
     matchIndex = 0;
-    roundName = ROUND_NAMES[bracket.length] || `${bracket.length}강`;
+    roundName = ROUND_NAMES[bracket.length] || `${bracket.length}강전`;
     renderMatch();
     replaceWith('screen-round');
   }catch(e){
@@ -447,28 +594,71 @@ function renderMatch(){
   document.getElementById('yearB').textContent = b.year;
   document.getElementById('roundLabel').textContent = roundName;
   document.getElementById('roundProgress').textContent = `${matchIndex+1} / ${bracket.length/2}매치`;
+  requestAnimationFrame(() => requestAnimationFrame(positionRoundLabel));
 }
 
-async function choose(which){
-  const picked = which === 'A' ? bracket[matchIndex*2] : bracket[matchIndex*2+1];
-  nextWinners.push(picked);
-  matchIndex++;
+let swapBusy = false;
 
-  if (matchIndex * 2 < bracket.length){
+async function swapMovie(which){
+  if (choiceBusy || swapBusy) return;
+  swapBusy = true;
+  const btn = document.getElementById(which === 'A' ? 'swapA' : 'swapB');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '불러오는 중...';
+  try{
+    const current = which === 'A' ? bracket[matchIndex*2] : bracket[matchIndex*2+1];
+    const excludeIds = new Set(bracket.map(m => String(m.id)));
+    excludeIds.add(String(current.id));
+    const replacement = await getSpareMovie(excludeIds);
+    if (!replacement) return;
+    if (which === 'A') bracket[matchIndex*2] = replacement;
+    else bracket[matchIndex*2+1] = replacement;
+    sessionMovies.push(replacement);
     renderMatch();
-    return;
+  }catch(e){
+    console.error(e);
+  }finally{
+    swapBusy = false;
+    btn.disabled = false;
+    btn.textContent = originalText;
   }
+}
 
-  if (nextWinners.length === 1){
-    await finishTournament(nextWinners[0]);
-    return;
+let choiceBusy = false;
+
+async function choose(which){
+  if (choiceBusy || swapBusy) return;
+  choiceBusy = true;
+  try{
+    const picked = which === 'A' ? bracket[matchIndex*2] : bracket[matchIndex*2+1];
+    await showRoundPopup(`${picked.title} 승리!`, 650);
+
+    nextWinners.push(picked);
+    matchIndex++;
+
+    if (matchIndex * 2 < bracket.length){
+      renderMatch();
+      return;
+    }
+
+    if (nextWinners.length === 1){
+      await finishTournament(nextWinners[0]);
+      return;
+    }
+
+    bracket = nextWinners;
+    nextWinners = [];
+    matchIndex = 0;
+    roundName = ROUND_NAMES[bracket.length] || `${bracket.length}강전`;
+    document.getElementById('roundLabel').textContent = roundName;
+
+    const popupText = ROUND_POPUP_TEXT[bracket.length];
+    if (popupText) await showRoundPopup(popupText);
+    renderMatch();
+  } finally {
+    choiceBusy = false;
   }
-
-  bracket = nextWinners;
-  nextWinners = [];
-  matchIndex = 0;
-  roundName = ROUND_NAMES[bracket.length] || `${bracket.length}강`;
-  renderMatch();
 }
 
 async function finishTournament(winner){
@@ -516,6 +706,7 @@ function playAgain(){
 
 window.startTournament = startTournament;
 window.choose = choose;
+window.swapMovie = swapMovie;
 window.playAgain = playAgain;
 </script>
 </body>
