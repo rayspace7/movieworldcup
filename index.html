@@ -93,6 +93,46 @@
     box-shadow:none;
   }
   .error-msg{ font-size:12px; color:#E0665A; margin-top:14px; min-height:16px; }
+  .category-list{
+    width:100%; max-width:260px;
+    display:flex; flex-direction:column; gap:10px;
+  }
+
+  #screen-genre{ align-items:center; justify-content:center; padding:32px 28px; text-align:center; }
+  .genre-title{
+    font-family:'Noto Serif KR', serif;
+    font-weight:700;
+    font-size:18px;
+    color:var(--gold);
+    margin-bottom:22px;
+  }
+  .genre-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    width:100%;
+    max-width:300px;
+    margin-bottom:22px;
+  }
+  .genre-btn{
+    padding:14px 4px;
+    border-radius:14px;
+    border:1px solid var(--gold-deep);
+    background:var(--surface);
+    color:var(--ink);
+    font-family:'Noto Serif KR', serif;
+    font-weight:700;
+    font-size:14px;
+    cursor:pointer;
+  }
+  .genre-btn:active{ transform:scale(0.97); }
+  .back-link{
+    border:none; background:transparent;
+    color:var(--ink-faint);
+    font-size:12.5px;
+    cursor:pointer;
+    text-decoration:underline;
+  }
 
   #screen-loading{ align-items:center; justify-content:center; text-align:center; }
   .film-spin{
@@ -313,9 +353,21 @@
   <div class="screen active" id="screen-start">
     <div class="start-emblem">🎬</div>
     <h1>나만의 명작영화<br>월드컵</h1>
-    <div class="start-sub">평점 상위 1000편 중 16편이 무작위로 등장해요.<br>16강부터 결승까지, 최고의 한 편을 골라보세요.</div>
-    <button class="cta" onclick="startTournament()">시작하기</button>
+    <div class="start-sub">어떤 영화로 월드컵을 즐길지 골라보세요.<br>16강부터 결승까지, 최고의 한 편을 뽑아보세요.</div>
+    <div class="category-list">
+      <button class="cta" onclick="startTournament('all')">모든 영화</button>
+      <button class="cta ghost" onclick="goTo('screen-genre')">장르별 선택</button>
+      <button class="cta ghost" onclick="startTournament('korean')">한국영화</button>
+      <button class="cta ghost" onclick="startTournament('western')">서양영화</button>
+      <button class="cta ghost" onclick="startTournament('asian')">아시아영화</button>
+    </div>
     <div class="error-msg" id="startError"></div>
+  </div>
+
+  <div class="screen" id="screen-genre">
+    <div class="genre-title">장르 선택</div>
+    <div class="genre-grid" id="genreGrid"></div>
+    <button type="button" class="back-link" onclick="history.back()">← 다른 카테고리 보기</button>
   </div>
 
   <div class="screen" id="screen-loading">
@@ -401,9 +453,32 @@ let matchIndex = 0;
 let roundName = '16강전';
 let playCount = 0;
 let sessionMovies = [];
+let currentCategory = 'all';
+let currentGenreId = null;
 
 const ROUND_NAMES = { 16: '16강전', 8: '8강전', 4: '4강전', 2: '결승' };
 const ROUND_POPUP_TEXT = { 8: '8강전!!', 4: '4강전!!', 2: '결승!!' };
+
+const GENRES = [
+  { id: 28, name: '액션' },
+  { id: 12, name: '모험' },
+  { id: 16, name: '애니메이션' },
+  { id: 35, name: '코미디' },
+  { id: 18, name: '드라마' },
+  { id: 27, name: '공포' },
+  { id: 10749, name: '로맨스' },
+  { id: 878, name: 'SF' },
+  { id: 53, name: '스릴러' },
+  { id: 14, name: '판타지' },
+];
+
+function renderGenreGrid(){
+  const grid = document.getElementById('genreGrid');
+  grid.innerHTML = GENRES.map(g =>
+    `<button type="button" class="genre-btn" onclick="startTournament('genre', ${g.id})">${g.name}</button>`
+  ).join('');
+}
+renderGenreGrid();
 
 function showRoundPopup(text, duration = 850){
   return new Promise((resolve) => {
@@ -486,7 +561,7 @@ function switchScreen(id){
 function goTo(id){ history.pushState({ screen: id }, ''); switchScreen(id); }
 function replaceWith(id){ history.replaceState({ screen: id }, ''); switchScreen(id); }
 
-const AD_GROUP_ID_INTERSTITIAL = "ait.dev.YOUR_TEST_AD_GROUP_ID";
+const AD_GROUP_ID_INTERSTITIAL = "ait.v2.live.82a2fa9ce30e4f21";
 let interstitialLoaded = false;
 
 function preloadInterstitial(){
@@ -518,7 +593,10 @@ document.getElementById('adModalConfirm').addEventListener('click', () => {
 });
 
 async function fetchRandom16(){
-  const response = await fetch(`${API_BASE}/api/movies/random16`, {
+  const params = new URLSearchParams();
+  params.set('category', currentCategory);
+  if (currentCategory === 'genre' && currentGenreId) params.set('genre', String(currentGenreId));
+  const response = await fetch(`${API_BASE}/api/movies/random16?${params.toString()}`, {
     signal: AbortSignal.timeout(60000)
   });
   if (!response.ok) {
@@ -555,7 +633,10 @@ async function submitResult(winner){
   return await response.json();
 }
 
-async function startTournament(){
+async function startTournament(category = 'all', genreId = null){
+  currentCategory = category;
+  currentGenreId = genreId;
+  spareQueue = [];
   document.getElementById('startError').textContent = '';
   goTo('screen-loading');
   let i = 0;
@@ -691,9 +772,10 @@ async function finishTournament(winner){
 }
 
 function beginNewTournament(){
+  // 다시 하기를 누르면 바로 재시작하지 않고, 카테고리 선택 화면으로 돌아가서
+  // 어떤 영화로 월드컵을 할지 다시 고를 수 있게 해요.
   switchScreen('screen-start');
   history.replaceState({ screen: 'screen-start' }, '');
-  startTournament();
 }
 
 function playAgain(){
@@ -708,6 +790,7 @@ window.startTournament = startTournament;
 window.choose = choose;
 window.swapMovie = swapMovie;
 window.playAgain = playAgain;
+window.goTo = goTo;
 </script>
 </body>
 </html>
