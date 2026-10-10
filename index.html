@@ -126,13 +126,6 @@
     cursor:pointer;
   }
   .genre-btn:active{ transform:scale(0.97); }
-  .back-link{
-    border:none; background:transparent;
-    color:var(--ink-faint);
-    font-size:12.5px;
-    cursor:pointer;
-    text-decoration:underline;
-  }
 
   #screen-lineup, #screen-reveal{
     align-items:center; text-align:center;
@@ -220,7 +213,7 @@
   }
 
   .sound-toggle{
-    position:absolute; top:14px; right:14px; z-index:50;
+    position:absolute; top:14px; left:14px; z-index:50;
     width:34px; height:34px; border-radius:50%;
     border:1px solid var(--line, rgba(0,0,0,0.08));
     background:var(--card-bg, rgba(255,255,255,0.85));
@@ -241,10 +234,6 @@
   .loading-text{ margin-top:16px; font-size:13.5px; color:var(--ink-soft); }
 
   #screen-round{ padding:0; position:relative; }
-  .round-progress{
-    position:absolute; top:14px; right:18px; z-index:3;
-    font-size:11.5px; color:var(--ink-faint);
-  }
   .matchup{
     flex:1;
     position:relative;
@@ -332,17 +321,6 @@
     text-align:center;
   }
   .movie-year{ margin-top:2px; font-size:11px; color:var(--ink-soft); text-align:center; }
-  .swap-btn{
-    margin-top:8px;
-    background:transparent;
-    border:1px solid var(--gold-deep);
-    color:var(--gold);
-    font-size:10.5px;
-    padding:4px 11px;
-    border-radius:999px;
-    cursor:pointer;
-  }
-  .swap-btn:disabled{ opacity:0.45; cursor:default; }
   .vs-mark{
     position:absolute; top:50%; left:50%;
     transform:translate(-50%,-50%);
@@ -475,7 +453,6 @@
   <div class="screen" id="screen-genre">
     <div class="genre-title">장르 선택</div>
     <div class="genre-grid" id="genreGrid"></div>
-    <button type="button" class="back-link" onclick="history.back()">← 다른 카테고리 보기</button>
   </div>
 
   <div class="screen" id="screen-loading">
@@ -498,7 +475,6 @@
   </div>
 
   <div class="screen" id="screen-round">
-    <div class="round-progress" id="roundProgress">1 / 8매치</div>
     <div class="matchup">
       <div class="round-label" id="roundLabel">
         <div class="round-label-main" id="roundLabelMain">16강전</div>
@@ -509,7 +485,6 @@
           <img id="imgA" src="" alt="">
           <div class="movie-title" id="titleA"></div>
           <div class="movie-year" id="yearA"></div>
-          <button type="button" class="swap-btn" id="swapA" onclick="event.stopPropagation(); swapMovie('A')">다른 영화 선택</button>
         </div>
       </div>
       <div class="vs-mark">VS</div>
@@ -518,7 +493,6 @@
           <img id="imgB" src="" alt="">
           <div class="movie-title" id="titleB"></div>
           <div class="movie-year" id="yearB"></div>
-          <button type="button" class="swap-btn" id="swapB" onclick="event.stopPropagation(); swapMovie('B')">다른 영화 선택</button>
         </div>
       </div>
     </div>
@@ -593,17 +567,48 @@ function escapeHtml(str){
 }
 
 // ───────────────────────── 효과음 (Web Audio API로 직접 합성) ─────────────────────────
-// 외부 음원 파일 없이 오실레이터로 짧은 효과음을 만들어요. 저작권 걱정이 없고 용량도 거의 안 들어요.
+// 외부 음원 파일 없이 오실레이터로 효과음을 만들어요. 저작권 걱정이 없고 용량도 거의 안 들어요.
+// 소리가 너무 얇고 가볍게 들리지 않도록, 음 하나당 (1) 기본음 (2) 살짝 detune된 겹음(코러스感)
+// (3) 한 옥타브 아래 서브 오실레이터(저음感)를 같이 울리고, 로우패스 필터와 짧은 리버브를 더해
+// 입체적으로 들리게 했어요.
 let audioCtx = null;
+let masterGain = null;
+let reverbSend = null;
 let soundEnabled = true;
 try {
   soundEnabled = localStorage.getItem('moviecup_sound') !== 'off';
 } catch (_) {}
 
+function createReverbImpulse(ctx){
+  const duration = 1.4, decay = 2.4, rate = ctx.sampleRate;
+  const length = Math.floor(rate * duration);
+  const impulse = ctx.createBuffer(2, length, rate);
+  for (let ch = 0; ch < 2; ch++){
+    const data = impulse.getChannelData(ch);
+    for (let i = 0; i < length; i++){
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
+    }
+  }
+  const node = ctx.createConvolver();
+  node.buffer = impulse;
+  return node;
+}
+
 function getAudioCtx(){
   const Ctx = window.AudioContext || window.webkitAudioContext;
   if (!Ctx) return null;
-  if (!audioCtx) audioCtx = new Ctx();
+  if (!audioCtx) {
+    audioCtx = new Ctx();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.9;
+    masterGain.connect(audioCtx.destination);
+
+    const reverb = createReverbImpulse(audioCtx);
+    reverbSend = audioCtx.createGain();
+    reverbSend.gain.value = 1;
+    reverbSend.connect(reverb);
+    reverb.connect(masterGain);
+  }
   if (audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
   return audioCtx;
 }
@@ -618,17 +623,50 @@ function unlockAudioOnce(){
 document.addEventListener('pointerdown', unlockAudioOnce, { once: true });
 document.addEventListener('click', unlockAudioOnce, { once: true });
 
-function playTone(ctx, freq, startTime, duration, { type = 'sine', gain = 0.16 } = {}){
-  const osc = ctx.createOscillator();
-  const g = ctx.createGain();
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, startTime);
-  g.gain.setValueAtTime(0, startTime);
-  g.gain.linearRampToValueAtTime(gain, startTime + 0.012);
-  g.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
-  osc.connect(g).connect(ctx.destination);
-  osc.start(startTime);
-  osc.stop(startTime + duration + 0.03);
+function playTone(ctx, freq, startTime, duration, opts = {}){
+  const {
+    type = 'triangle',
+    gain = 0.14,
+    sub = true,     // 한 옥타브 아래 서브 레이어 — 저음으로 소리에 무게감을 줘요.
+    detune = 6,     // 살짝 어긋나게 겹치는 2번째 레이어 — 코러스처럼 두껍게 들려요.
+    filterFreq = 2800,
+    wet = 0.28,     // 리버브로 보내는 양 — 공간감("입체적")을 줘요.
+  } = opts;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.Q.value = 0.6;
+  filter.frequency.setValueAtTime(Math.max(freq * 2.2, 500), startTime);
+  filter.frequency.exponentialRampToValueAtTime(filterFreq, startTime + 0.025);
+
+  const noteGain = ctx.createGain();
+  noteGain.gain.setValueAtTime(0, startTime);
+  noteGain.gain.linearRampToValueAtTime(gain, startTime + 0.016);
+  noteGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+  filter.connect(noteGain);
+  noteGain.connect(masterGain);
+  const wetGain = ctx.createGain();
+  wetGain.gain.value = wet;
+  noteGain.connect(wetGain);
+  wetGain.connect(reverbSend);
+
+  const stopAt = startTime + duration + 0.05;
+  function addOsc(freqMul, oscType, levelMul, detuneCents){
+    const osc = ctx.createOscillator();
+    osc.type = oscType;
+    osc.frequency.setValueAtTime(freq * freqMul, startTime);
+    if (detuneCents) osc.detune.setValueAtTime(detuneCents, startTime);
+    const oscGain = ctx.createGain();
+    oscGain.gain.value = levelMul;
+    osc.connect(oscGain).connect(filter);
+    osc.start(startTime);
+    osc.stop(stopAt);
+  }
+
+  addOsc(1, type, 1, 0);
+  addOsc(1, type, 0.45, detune);
+  if (sub) addOsc(0.5, 'sine', 0.4, 0);
 }
 
 function playNotes(notes, opts = {}){
@@ -639,34 +677,49 @@ function playNotes(notes, opts = {}){
   notes.forEach(({ freq, delay, duration }) => playTone(ctx, freq, now + delay, duration, opts));
 }
 
-// 라운드 시작(16강전/8강전/4강전/결승) — 경쾌하게 상승하는 3음 팡파르
+// 라운드 시작(16강전/8강전/4강전/결승) — 울림이 있는 3음 상승 팡파르
 function playRoundStartSound(){
   playNotes([
-    { freq: 523.25, delay: 0,    duration: 0.15 }, // C5
-    { freq: 659.25, delay: 0.10, duration: 0.15 }, // E5
-    { freq: 783.99, delay: 0.20, duration: 0.24 }, // G5
-  ], { type: 'triangle', gain: 0.16 });
+    { freq: 392.00, delay: 0,    duration: 0.24 }, // G4
+    { freq: 523.25, delay: 0.10, duration: 0.24 }, // C5
+    { freq: 659.25, delay: 0.20, duration: 0.36 }, // E5
+  ], { type: 'triangle', gain: 0.15, wet: 0.24 });
 }
 
-// 영화 선택(승리) 팝업 — 짧고 경쾌한 '딩동'
+// 영화 선택(승리) 팝업 — 묵직하면서도 또렷한 '딩동'
 function playWinSound(){
   playNotes([
-    { freq: 880.00,  delay: 0,    duration: 0.10 }, // A5
-    { freq: 1318.51, delay: 0.07, duration: 0.16 }, // E6
-  ], { type: 'sine', gain: 0.15 });
+    { freq: 587.33, delay: 0,    duration: 0.14 }, // D5
+    { freq: 880.00, delay: 0.06, duration: 0.24 }, // A5
+  ], { type: 'triangle', gain: 0.14, wet: 0.2 });
 }
 
-// 최종 우승 공개 — 화려한 4음 팡파르 + 스파클
+// 라운드/진출작 소개 — 차분한 코드 패드 위에 짧은 멜로디가 얹히는 소개용 음악
+function playRevealJingle(){
+  playNotes([
+    { freq: 293.66, delay: 0, duration: 1.0 }, // D4 pad
+    { freq: 369.99, delay: 0, duration: 1.0 }, // F#4 pad
+    { freq: 440.00, delay: 0, duration: 1.0 }, // A4 pad
+  ], { type: 'sine', gain: 0.055, sub: false, detune: 4, wet: 0.45 });
+  playNotes([
+    { freq: 587.33, delay: 0.05, duration: 0.28 }, // D5
+    { freq: 698.46, delay: 0.24, duration: 0.28 }, // F#5
+    { freq: 880.00, delay: 0.44, duration: 0.55 }, // A5
+  ], { type: 'triangle', gain: 0.13, wet: 0.32 });
+}
+
+// 최종 우승 공개 — 풍성한 4음 팡파르 + 스파클
 function playChampionSound(){
   playNotes([
-    { freq: 523.25,  delay: 0,    duration: 0.16 }, // C5
-    { freq: 659.25,  delay: 0.14, duration: 0.16 }, // E5
-    { freq: 783.99,  delay: 0.28, duration: 0.16 }, // G5
-    { freq: 1046.50, delay: 0.42, duration: 0.45 }, // C6
-  ], { type: 'triangle', gain: 0.18 });
+    { freq: 392.00,  delay: 0,    duration: 0.24 }, // G4
+    { freq: 523.25,  delay: 0.16, duration: 0.24 }, // C5
+    { freq: 659.25,  delay: 0.32, duration: 0.24 }, // E5
+    { freq: 783.99,  delay: 0.48, duration: 0.6  }, // G5
+  ], { type: 'triangle', gain: 0.16, wet: 0.32 });
   playNotes([
-    { freq: 1567.98, delay: 0.44, duration: 0.32 }, // G6 sparkle
-  ], { type: 'sine', gain: 0.10 });
+    { freq: 1046.50, delay: 0.50, duration: 0.48 }, // C6 sparkle
+    { freq: 1318.51, delay: 0.64, duration: 0.55 }, // E6 sparkle
+  ], { type: 'sine', gain: 0.07, sub: false, wet: 0.4 });
 }
 
 function setSoundEnabled(enabled){
@@ -901,6 +954,7 @@ async function startTournament(category = 'all', genreId = null){
     sessionMovies = movies.slice();
     renderLineupGrid();
     replaceWith('screen-lineup');
+    playRevealJingle();
   }catch(e){
     clearInterval(interval);
     console.error(e);
@@ -968,51 +1022,13 @@ function renderMatch(){
   document.getElementById('yearB').textContent = b.year;
   document.getElementById('roundLabelMain').textContent = roundName;
   document.getElementById('roundMatchLabel').textContent = `${matchIndex+1}경기`;
-  document.getElementById('roundProgress').textContent = `${matchIndex+1} / ${bracket.length/2}매치`;
   requestAnimationFrame(() => requestAnimationFrame(positionRoundLabel));
-}
-
-let swapBusy = false;
-
-async function swapMovie(which){
-  if (choiceBusy || swapBusy) return;
-  swapBusy = true;
-  const btn = document.getElementById(which === 'A' ? 'swapA' : 'swapB');
-  const originalText = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = '불러오는 중...';
-  const tournamentIdAtStart = tournamentId;
-  const matchIndexAtStart = matchIndex;
-  const targetIndex = which === 'A' ? matchIndexAtStart*2 : matchIndexAtStart*2+1;
-  try{
-    const current = bracket[targetIndex];
-    const excludeIds = new Set(bracket.map(m => String(m.id)));
-    excludeIds.add(String(current.id));
-    const replacement = await getSpareMovie(excludeIds);
-    if (!replacement) return;
-    // 기다리는 동안 토너먼트가 새로 시작되거나(뒤로가기 후 다른 카테고리 선택 등)
-    // 이미 다음 라운드로 넘어가 버렸다면, 지금 결과는 더 이상 유효하지 않으니 버려요.
-    // (그렇지 않으면 길이가 짧아진 새 bracket에 옛 인덱스로 값을 넣어서
-    //  배열이 비정상적으로 늘어나고 "17강전" 같은 이상한 라운드가 생길 수 있어요.)
-    if (tournamentId !== tournamentIdAtStart || matchIndex !== matchIndexAtStart || targetIndex >= bracket.length) {
-      return;
-    }
-    bracket[targetIndex] = replacement;
-    sessionMovies.push(replacement);
-    renderMatch();
-  }catch(e){
-    console.error(e);
-  }finally{
-    swapBusy = false;
-    btn.disabled = false;
-    btn.textContent = originalText;
-  }
 }
 
 let choiceBusy = false;
 
 async function choose(which){
-  if (choiceBusy || swapBusy) return;
+  if (choiceBusy) return;
   choiceBusy = true;
   try{
     const picked = which === 'A' ? bracket[matchIndex*2] : bracket[matchIndex*2+1];
@@ -1071,6 +1087,7 @@ function showRoundReveal(winners){
   btn.dataset.requiresAd = config.requiresAd ? '1' : '0';
   renderRevealGrid(winners);
   replaceWith('screen-reveal');
+  playRevealJingle();
 }
 
 async function proceedToNextRound(){
@@ -1141,7 +1158,6 @@ function playAgain(){
 
 window.startTournament = startTournament;
 window.choose = choose;
-window.swapMovie = swapMovie;
 window.swapLineupMovie = swapLineupMovie;
 window.confirmLineupAndStart = confirmLineupAndStart;
 window.playAgain = playAgain;
