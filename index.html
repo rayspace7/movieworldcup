@@ -98,7 +98,7 @@
     display:flex; flex-direction:column; gap:10px;
   }
 
-  #screen-genre{ align-items:center; justify-content:center; padding:32px 28px; text-align:center; }
+  #screen-genre, #screen-country, #screen-era{ align-items:center; justify-content:center; padding:32px 28px; text-align:center; }
   .genre-title{
     font-family:'Noto Serif KR', serif;
     font-weight:700;
@@ -443,9 +443,8 @@
     <div class="category-list">
       <button class="cta" onclick="startTournament('all')">모든 영화</button>
       <button class="cta ghost" onclick="goTo('screen-genre')">장르별 선택</button>
-      <button class="cta ghost" onclick="startTournament('korean')">한국영화</button>
-      <button class="cta ghost" onclick="startTournament('western')">서양영화</button>
-      <button class="cta ghost" onclick="startTournament('asian')">아시아영화</button>
+      <button class="cta ghost" onclick="goTo('screen-country')">국가별 선택</button>
+      <button class="cta ghost" onclick="goTo('screen-era')">시대별 선택</button>
     </div>
     <div class="error-msg" id="startError"></div>
   </div>
@@ -453,6 +452,16 @@
   <div class="screen" id="screen-genre">
     <div class="genre-title">장르 선택</div>
     <div class="genre-grid" id="genreGrid"></div>
+  </div>
+
+  <div class="screen" id="screen-country">
+    <div class="genre-title">국가 선택</div>
+    <div class="genre-grid" id="countryGrid"></div>
+  </div>
+
+  <div class="screen" id="screen-era">
+    <div class="genre-title">시대 선택</div>
+    <div class="genre-grid" id="eraGrid"></div>
   </div>
 
   <div class="screen" id="screen-loading">
@@ -623,103 +632,204 @@ function unlockAudioOnce(){
 document.addEventListener('pointerdown', unlockAudioOnce, { once: true });
 document.addEventListener('click', unlockAudioOnce, { once: true });
 
-function playTone(ctx, freq, startTime, duration, opts = {}){
-  const {
-    type = 'triangle',
-    gain = 0.14,
-    sub = true,     // 한 옥타브 아래 서브 레이어 — 저음으로 소리에 무게감을 줘요.
-    detune = 6,     // 살짝 어긋나게 겹치는 2번째 레이어 — 코러스처럼 두껍게 들려요.
-    filterFreq = 2800,
-    wet = 0.28,     // 리버브로 보내는 양 — 공간감("입체적")을 줘요.
-  } = opts;
+// 아래는 전부 "악기처럼" 들리게 만든 사운드예요 (단순 삐- 소리 대신
+// 영화관 울림이 있는 브라스/벨/서브베이스 질감을 오실레이터로 합성해요).
 
-  const filter = ctx.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.Q.value = 0.6;
-  filter.frequency.setValueAtTime(Math.max(freq * 2.2, 500), startTime);
-  filter.frequency.exponentialRampToValueAtTime(filterFreq, startTime + 0.025);
-
-  const noteGain = ctx.createGain();
-  noteGain.gain.setValueAtTime(0, startTime);
-  noteGain.gain.linearRampToValueAtTime(gain, startTime + 0.016);
-  noteGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
-
-  filter.connect(noteGain);
-  noteGain.connect(masterGain);
-  const wetGain = ctx.createGain();
-  wetGain.gain.value = wet;
-  noteGain.connect(wetGain);
-  wetGain.connect(reverbSend);
-
-  const stopAt = startTime + duration + 0.05;
-  function addOsc(freqMul, oscType, levelMul, detuneCents){
-    const osc = ctx.createOscillator();
-    osc.type = oscType;
-    osc.frequency.setValueAtTime(freq * freqMul, startTime);
-    if (detuneCents) osc.detune.setValueAtTime(detuneCents, startTime);
-    const oscGain = ctx.createGain();
-    oscGain.gain.value = levelMul;
-    osc.connect(oscGain).connect(filter);
-    osc.start(startTime);
-    osc.stop(stopAt);
+let noiseBuffer = null;
+function getNoiseBuffer(ctx){
+  if (!noiseBuffer) {
+    const length = Math.floor(ctx.sampleRate * 2);
+    noiseBuffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
   }
-
-  addOsc(1, type, 1, 0);
-  addOsc(1, type, 0.45, detune);
-  if (sub) addOsc(0.5, 'sine', 0.4, 0);
+  return noiseBuffer;
 }
 
-function playNotes(notes, opts = {}){
+// 종(벨)소리 — 배음비가 정수가 아닌 여러 사인파를 겹쳐서 기계음 대신
+// 은은하게 울리는 차임벨 느낌을 내요. 영화 선택/스파클에 사용해요.
+function playBell(ctx, freq, startTime, duration, opts = {}){
+  const { gain = 0.15, wet = 0.35 } = opts;
+  const partials = [
+    { mul: 1.00, level: 1.00, decayMul: 1.0 },
+    { mul: 2.76, level: 0.34, decayMul: 0.55 },
+    { mul: 4.07, level: 0.16, decayMul: 0.34 },
+  ];
+  const bus = ctx.createGain();
+  bus.gain.value = gain;
+  bus.connect(masterGain);
+  const wetGain = ctx.createGain();
+  wetGain.gain.value = wet;
+  bus.connect(wetGain);
+  wetGain.connect(reverbSend);
+
+  partials.forEach((p) => {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq * p.mul, startTime);
+    const dur = duration * p.decayMul + 0.2;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, startTime);
+    g.gain.linearRampToValueAtTime(p.level, startTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, startTime + dur);
+    osc.connect(g).connect(bus);
+    osc.start(startTime);
+    osc.stop(startTime + dur + 0.05);
+  });
+}
+
+// 브라스/현악 스웰 코드 — 톱니파 2겹 + 서브 옥타브를 로우패스 필터로
+// 천천히 열어서, 금관악기가 '뿌우' 하고 번지듯 커지는 영화음악 느낌을 내요.
+// attack을 짧게 주면 브라스 스탭, 길게 주면 현악 패드처럼 들려요.
+function playBrassSwell(ctx, freqs, startTime, duration, opts = {}){
+  const { gain = 0.1, wet = 0.32, attack = 0.09 } = opts;
+  freqs.forEach((freq) => {
+    const osc1 = ctx.createOscillator();
+    osc1.type = 'sawtooth';
+    osc1.frequency.setValueAtTime(freq * 0.985, startTime);
+    osc1.frequency.linearRampToValueAtTime(freq, startTime + attack * 0.6);
+
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'sawtooth';
+    osc2.detune.setValueAtTime(7, startTime);
+    osc2.frequency.setValueAtTime(freq, startTime);
+
+    const sub = ctx.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(freq / 2, startTime);
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.Q.value = 0.7;
+    filter.frequency.setValueAtTime(420, startTime);
+    filter.frequency.linearRampToValueAtTime(2600, startTime + attack);
+    filter.frequency.exponentialRampToValueAtTime(1100, startTime + duration);
+
+    const mix = ctx.createGain();
+    mix.gain.value = 1;
+    osc1.connect(mix);
+    osc2.connect(mix);
+    const subGain = ctx.createGain();
+    subGain.gain.value = 0.5;
+    sub.connect(subGain).connect(mix);
+
+    const noteGain = ctx.createGain();
+    noteGain.gain.setValueAtTime(0, startTime);
+    noteGain.gain.linearRampToValueAtTime(gain, startTime + attack);
+    noteGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+    mix.connect(filter).connect(noteGain).connect(masterGain);
+    const wetGain = ctx.createGain();
+    wetGain.gain.value = wet;
+    noteGain.connect(wetGain);
+    wetGain.connect(reverbSend);
+
+    const stopAt = startTime + duration + 0.1;
+    [osc1, osc2, sub].forEach((o) => { o.start(startTime); o.stop(stopAt); });
+  });
+}
+
+// 저음 '웅' 하는 울림 — 영화 예고편 특유의 묵직한 임팩트를 내요.
+function playBoom(ctx, startTime, opts = {}){
+  const { gain = 0.45 } = opts;
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(120, startTime);
+  osc.frequency.exponentialRampToValueAtTime(45, startTime + 0.35);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, startTime);
+  g.gain.linearRampToValueAtTime(gain, startTime + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.5);
+  osc.connect(g).connect(masterGain);
+  osc.start(startTime);
+  osc.stop(startTime + 0.55);
+
+  const noiseSrc = ctx.createBufferSource();
+  noiseSrc.buffer = getNoiseBuffer(ctx);
+  const noiseFilter = ctx.createBiquadFilter();
+  noiseFilter.type = 'lowpass';
+  noiseFilter.frequency.setValueAtTime(400, startTime);
+  const noiseGain = ctx.createGain();
+  noiseGain.gain.setValueAtTime(0, startTime);
+  noiseGain.gain.linearRampToValueAtTime(gain * 0.35, startTime + 0.004);
+  noiseGain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.18);
+  noiseSrc.connect(noiseFilter).connect(noiseGain).connect(masterGain);
+  noiseSrc.start(startTime);
+  noiseSrc.stop(startTime + 0.2);
+}
+
+// 심벌처럼 '솨아' 번지는 섬광음 — 대역통과 필터를 위로 쓸어올려서
+// 디지털 노이즈가 아니라 심벌 스웰처럼 들리게 해요.
+function playShimmer(ctx, startTime, duration, opts = {}){
+  const { gain = 0.06, wet = 0.5 } = opts;
+  const src = ctx.createBufferSource();
+  src.buffer = getNoiseBuffer(ctx);
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.setValueAtTime(3200, startTime);
+  bp.frequency.exponentialRampToValueAtTime(7500, startTime + duration);
+  bp.Q.value = 0.8;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, startTime);
+  g.gain.linearRampToValueAtTime(gain, startTime + duration * 0.3);
+  g.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+  src.connect(bp).connect(g).connect(masterGain);
+  const wetGain = ctx.createGain();
+  wetGain.gain.value = wet;
+  g.connect(wetGain);
+  wetGain.connect(reverbSend);
+  src.start(startTime);
+  src.stop(startTime + duration + 0.05);
+}
+
+// 라운드 시작(16강전/8강전/4강전/결승) — 묵직한 저음 임팩트 + 브라스 코드가
+// 번지듯 커지는 예고편풍 스팅어
+function playRoundStartSound(){
   if (!soundEnabled) return;
   const ctx = getAudioCtx();
   if (!ctx) return;
   const now = ctx.currentTime;
-  notes.forEach(({ freq, delay, duration }) => playTone(ctx, freq, now + delay, duration, opts));
+  playBoom(ctx, now, { gain: 0.32 });
+  playBrassSwell(ctx, [196.00, 246.94, 329.63], now + 0.03, 0.9, { gain: 0.1, wet: 0.35, attack: 0.11 }); // G3-B3-E4
+  playShimmer(ctx, now + 0.08, 0.75, { gain: 0.045, wet: 0.5 });
 }
 
-// 라운드 시작(16강전/8강전/4강전/결승) — 울림이 있는 3음 상승 팡파르
-function playRoundStartSound(){
-  playNotes([
-    { freq: 392.00, delay: 0,    duration: 0.24 }, // G4
-    { freq: 523.25, delay: 0.10, duration: 0.24 }, // C5
-    { freq: 659.25, delay: 0.20, duration: 0.36 }, // E5
-  ], { type: 'triangle', gain: 0.15, wet: 0.24 });
-}
-
-// 영화 선택(승리) 팝업 — 묵직하면서도 또렷한 '딩동'
+// 영화 선택(승리) 팝업 — 기계음 '삐빅' 대신 은은하게 울리는 차임벨 두 음
 function playWinSound(){
-  playNotes([
-    { freq: 587.33, delay: 0,    duration: 0.14 }, // D5
-    { freq: 880.00, delay: 0.06, duration: 0.24 }, // A5
-  ], { type: 'triangle', gain: 0.14, wet: 0.2 });
+  if (!soundEnabled) return;
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  playBell(ctx, 587.33, now,        0.5, { gain: 0.15, wet: 0.3 });  // D5
+  playBell(ctx, 880.00, now + 0.08, 0.6, { gain: 0.13, wet: 0.33 }); // A5
 }
 
-// 라운드/진출작 소개 — 차분한 코드 패드 위에 짧은 멜로디가 얹히는 소개용 음악
+// 라운드/진출작 소개 — 느리게 번지는 현악 패드 위에 차임벨 멜로디가 얹히는
+// 소개용 음악
 function playRevealJingle(){
-  playNotes([
-    { freq: 293.66, delay: 0, duration: 1.0 }, // D4 pad
-    { freq: 369.99, delay: 0, duration: 1.0 }, // F#4 pad
-    { freq: 440.00, delay: 0, duration: 1.0 }, // A4 pad
-  ], { type: 'sine', gain: 0.055, sub: false, detune: 4, wet: 0.45 });
-  playNotes([
-    { freq: 587.33, delay: 0.05, duration: 0.28 }, // D5
-    { freq: 698.46, delay: 0.24, duration: 0.28 }, // F#5
-    { freq: 880.00, delay: 0.44, duration: 0.55 }, // A5
-  ], { type: 'triangle', gain: 0.13, wet: 0.32 });
+  if (!soundEnabled) return;
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  playBrassSwell(ctx, [196.00, 246.94, 329.63], now, 1.3, { gain: 0.055, wet: 0.5, attack: 0.5 }); // 느린 어택 = 현악 패드처럼
+  playBell(ctx, 587.33, now + 0.15, 0.4, { gain: 0.1,  wet: 0.35 });
+  playBell(ctx, 698.46, now + 0.42, 0.4, { gain: 0.1,  wet: 0.35 });
+  playBell(ctx, 880.00, now + 0.7,  0.6, { gain: 0.11, wet: 0.4 });
 }
 
-// 최종 우승 공개 — 풍성한 4음 팡파르 + 스파클
+// 최종 우승 공개 — 임팩트 + 두 단의 브라스 코드 진행 + 심벌 스웰 + 벨 스파클로
+// 꽉 찬 엔딩 팡파르를 만들어요
 function playChampionSound(){
-  playNotes([
-    { freq: 392.00,  delay: 0,    duration: 0.24 }, // G4
-    { freq: 523.25,  delay: 0.16, duration: 0.24 }, // C5
-    { freq: 659.25,  delay: 0.32, duration: 0.24 }, // E5
-    { freq: 783.99,  delay: 0.48, duration: 0.6  }, // G5
-  ], { type: 'triangle', gain: 0.16, wet: 0.32 });
-  playNotes([
-    { freq: 1046.50, delay: 0.50, duration: 0.48 }, // C6 sparkle
-    { freq: 1318.51, delay: 0.64, duration: 0.55 }, // E6 sparkle
-  ], { type: 'sine', gain: 0.07, sub: false, wet: 0.4 });
+  if (!soundEnabled) return;
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  playBoom(ctx, now, { gain: 0.5 });
+  playBrassSwell(ctx, [196.00, 246.94, 329.63], now + 0.02, 1.0, { gain: 0.13, wet: 0.35, attack: 0.08 }); // G3-B3-E4
+  playBrassSwell(ctx, [261.63, 329.63, 392.00], now + 0.55, 1.1, { gain: 0.14, wet: 0.38, attack: 0.07 }); // C4-E4-G4 (해결)
+  playShimmer(ctx, now + 0.5, 1.4, { gain: 0.08, wet: 0.55 });
+  playBell(ctx, 1046.50, now + 0.75, 0.7, { gain: 0.09, wet: 0.45 });
+  playBell(ctx, 1318.51, now + 0.95, 0.8, { gain: 0.09, wet: 0.45 });
 }
 
 function setSoundEnabled(enabled){
@@ -758,6 +868,37 @@ function renderGenreGrid(){
   ).join('');
 }
 renderGenreGrid();
+
+const COUNTRIES = [
+  { id: 'korean', name: '한국영화' },
+  { id: 'american', name: '미국영화' },
+  { id: 'european', name: '유럽영화' },
+  { id: 'japanese', name: '일본영화' },
+  { id: 'chinese', name: '중화권영화' },
+  { id: 'other', name: '그외 모든 국가' },
+];
+
+function renderCountryGrid(){
+  const grid = document.getElementById('countryGrid');
+  grid.innerHTML = COUNTRIES.map(c =>
+    `<button type="button" class="genre-btn" onclick="startTournament('${c.id}')">${c.name}</button>`
+  ).join('');
+}
+renderCountryGrid();
+
+const ERAS = [
+  { id: 'era_pre1970', name: '1970년대 이전' },
+  { id: 'era_80_90', name: '1980~1990년대' },
+  { id: 'era_2000', name: '2000년대 이후' },
+];
+
+function renderEraGrid(){
+  const grid = document.getElementById('eraGrid');
+  grid.innerHTML = ERAS.map(e =>
+    `<button type="button" class="genre-btn" onclick="startTournament('${e.id}')">${e.name}</button>`
+  ).join('');
+}
+renderEraGrid();
 
 function showRoundPopup(text, duration = 850){
   return new Promise((resolve) => {
@@ -1149,11 +1290,9 @@ function beginNewTournament(){
 }
 
 function playAgain(){
-  if (playCount >= 1){
-    showAdModal(beginNewTournament, '짧은 광고를 보고<br>새 토너먼트를 시작할게요');
-  } else {
-    beginNewTournament();
-  }
+  // 다시 하기는 광고 없이 바로 카테고리 선택 화면으로 돌아가요.
+  // (전면 광고는 8강전/결승전 시작 전에만 나와요.)
+  beginNewTournament();
 }
 
 window.startTournament = startTournament;

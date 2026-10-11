@@ -2,15 +2,26 @@
  * 나만의 명작영화 월드컵 백엔드 예제 (Express, TMDB API + Upstash Redis)
  *
  * 전체 흐름
- * 1. 카테고리(모든 영화/한국영화/서양영화/아시아영화/장르별)마다 TMDB에서 영화를 긁어와
+ * 1. 카테고리(모든 영화/장르별/국가별(한국·미국·유럽·일본·중화권·그외 모든 국가)/
+ *    시대별(1970년대 이전·1980~1990년대·2000년대 이후))마다 TMDB에서 영화를 긁어와
  *    Upstash에 "따로" 캐싱해요 (카테고리별 캐시 키가 달라요. getPoolKey 참고).
  *    - /discover/movie를 vote_average.desc로 정렬해서 모아요.
- *    - 국가/언어 필터는 TMDB가 콤마로 OR 검색을 지원하지 않아서, 카테고리별로 여러 번
- *      나눠서 요청한 뒤 합쳐요 (예: 아시아영화 = 한국어+일본어+중국어+힌디어+태국어 영화를 합침).
+ *    - 국가 필터는 TMDB가 콤마로 OR 검색을 지원하지 않아서, 카테고리별로 여러 번 나눠서
+ *      요청한 뒤 합쳐요 (예: 유럽영화 = 영국+프랑스+독일+이탈리아+스페인+스웨덴 영화를 합침,
+ *      중화권영화 = 중국+대만+홍콩 영화를 합침).
+ *      ⚠️ 파라미터 이름 주의: 국가 필터는 with_origin_country예요. 예전엔 원어 필터인
+ *      original_language를 잘못 써서(TMDB가 조용히 무시하는 파라미터예요) "아시아영화"를
+ *      선택해도 서양 영화가 섞여 나오는 버그가 있었는데, with_origin_country로 고쳤어요.
+ *    - "그외 모든 국가"는 TMDB가 "이 국가들을 제외"하는 필터를 지원하지 않아서, 필터 없이
+ *      넓게 가져온 다음 TMDB 응답의 origin_country 필드를 보고 이미 카테고리가 있는 주요
+ *      국가(한국/미국/영국/프랑스/독일/이탈리아/스페인/스웨덴/일본/중국/대만/홍콩) 작품을
+ *      코드에서 걸러내요 (excludeOriginCountries).
+ *    - 시대별 필터는 primary_release_date.gte/lte를 써요 (예: 2000년대 이후 = gte 2000-01-01).
  *    - TMDB Rate limit은 넉넉한 편이지만, 매 요청마다 새로 긁으면 느리고 낭비라 캐싱이 필수예요.
  * 2. GET /api/movies/random16?category=xxx&genre=yyy → 해당 카테고리 풀 중 16편을 무작위로 뽑아
- *    클라이언트에 내려줘요. category는 all/korean/western/asian/genre 중 하나,
- *    genre를 쓸 때는 genre=TMDB_장르ID도 같이 보내요 (예: genre=28은 액션).
+ *    클라이언트에 내려줘요. category는 all/korean/american/european/japanese/chinese/other/
+ *    era_pre1970/era_80_90/era_2000/genre 중 하나, genre를 쓸 때는 genre=TMDB_장르ID도
+ *    같이 보내요 (예: genre=28은 액션).
  * 3. POST /api/movies/result → 최종 우승작 id를 받아 Upstash에 우승 카운터를 1 올리고,
  *    전체 플레이 수 대비 이 영화가 우승한 비율(%), TOP 10 리더보드를 계산해서 돌려줘요.
  *
@@ -53,11 +64,18 @@ const POSTER_BASE = 'https://image.tmdb.org/t/p/w342';
 const POOL_SIZE = 1000; // 카테고리당 목표 최대치 (실제로는 TMDB에 그만큼 없으면 더 적게 모여요)
 
 /**
+ * "그외 모든 국가" 카테고리에서 걸러낼 주요 국가 코드 (이미 자기 카테고리가 있는 국가들).
+ */
+const MAJOR_ORIGIN_COUNTRIES = ['KR', 'US', 'GB', 'FR', 'DE', 'IT', 'ES', 'SE', 'JP', 'CN', 'TW', 'HK'];
+
+/**
  * 카테고리별 설정.
  * - variants: TMDB /discover/movie에 추가로 붙일 파라미터들. 여러 개면 각각 따로 긁어서 합쳐요
- *   (TMDB가 origin_country/original_language를 콤마로 OR 검색하게 해주지 않아서 이렇게 우회해요).
- * - minVoteCount: 카테고리가 좁을수록(예: 한국영화) 기준 투표수를 낮춰야 16편 이상이 모여요.
+ *   (TMDB가 origin_country를 콤마로 OR 검색하게 해주지 않아서 이렇게 우회해요).
+ * - minVoteCount: 카테고리가 좁을수록(예: 일본영화) 기준 투표수를 낮춰야 16편 이상이 모여요.
  * - pagesPerVariant: variant 하나당 최대로 긁을 페이지 수(20개/페이지).
+ * - excludeOriginCountries: 있으면, 응답에 담긴 origin_country가 이 목록과 하나라도 겹치는
+ *   작품은 풀에서 제외해요 ("그외 모든 국가" 전용).
  */
 const CATEGORY_CONFIG = {
   all: {
@@ -70,21 +88,57 @@ const CATEGORY_CONFIG = {
     pagesPerVariant: 50,
     variants: [{ with_origin_country: 'KR' }],
   },
-  western: {
-    minVoteCount: 800,
+  american: {
+    minVoteCount: 600,
     pagesPerVariant: 50,
-    variants: [{ original_language: 'en' }],
+    variants: [{ with_origin_country: 'US' }],
   },
-  asian: {
+  european: {
     minVoteCount: 150,
-    pagesPerVariant: 50,
+    pagesPerVariant: 25,
     variants: [
-      { original_language: 'ko' },
-      { original_language: 'ja' },
-      { original_language: 'zh' },
-      { original_language: 'hi' },
-      { original_language: 'th' },
+      { with_origin_country: 'GB' },
+      { with_origin_country: 'FR' },
+      { with_origin_country: 'DE' },
+      { with_origin_country: 'IT' },
+      { with_origin_country: 'ES' },
+      { with_origin_country: 'SE' },
     ],
+  },
+  japanese: {
+    minVoteCount: 100,
+    pagesPerVariant: 50,
+    variants: [{ with_origin_country: 'JP' }],
+  },
+  chinese: {
+    minVoteCount: 100,
+    pagesPerVariant: 35,
+    variants: [
+      { with_origin_country: 'CN' },
+      { with_origin_country: 'TW' },
+      { with_origin_country: 'HK' },
+    ],
+  },
+  other: {
+    minVoteCount: 300,
+    pagesPerVariant: 50,
+    variants: [{}],
+    excludeOriginCountries: MAJOR_ORIGIN_COUNTRIES,
+  },
+  era_pre1970: {
+    minVoteCount: 80,
+    pagesPerVariant: 50,
+    variants: [{ 'primary_release_date.lte': '1969-12-31' }],
+  },
+  era_80_90: {
+    minVoteCount: 300,
+    pagesPerVariant: 50,
+    variants: [{ 'primary_release_date.gte': '1980-01-01', 'primary_release_date.lte': '1999-12-31' }],
+  },
+  era_2000: {
+    minVoteCount: 1000,
+    pagesPerVariant: 50,
+    variants: [{ 'primary_release_date.gte': '2000-01-01' }],
   },
 };
 
@@ -100,10 +154,12 @@ function getCategoryConfig(category, genreId) {
 }
 
 function getPoolKey(category, genreId) {
-  // v3: 아시아영화 pagesPerVariant를 15→50으로 늘려서 더 캐서, 캐시를 새로 만들게 키를 올렸어요.
-  if (category === 'genre' && genreId) return `moviecup:pool:v3:genre:${genreId}`;
-  if (CATEGORY_CONFIG[category]) return `moviecup:pool:v3:${category}`;
-  return 'moviecup:pool:v3:all';
+  // v4: 카테고리 구조를 국가별(한국/미국/유럽/일본/중화권/그외)·시대별로 다시 짜면서
+  //     (기존 서양영화/아시아영화의 original_language 버그도 함께 고치면서) 캐시를 새로
+  //     만들게 키를 올렸어요.
+  if (category === 'genre' && genreId) return `moviecup:pool:v4:genre:${genreId}`;
+  if (CATEGORY_CONFIG[category]) return `moviecup:pool:v4:${category}`;
+  return 'moviecup:pool:v4:all';
 }
 
 if (!TMDB_API_KEY) {
@@ -163,6 +219,10 @@ async function ensureMoviePool(category, genreId) {
       for (const m of results) {
         if (!m.poster_path) continue; // 포스터 없는 작품은 제외
         if (seenIds.has(m.id)) continue; // 중복 방지 (페이지 경계 겹침 + variant 간 겹침 모두 방지)
+        if (config.excludeOriginCountries) {
+          const origins = m.origin_country || [];
+          if (origins.some((c) => config.excludeOriginCountries.includes(c))) continue;
+        }
         seenIds.add(m.id);
         movies.push({
           id: m.id,
