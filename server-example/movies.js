@@ -49,6 +49,7 @@
 
 import express from 'express';
 import { Redis } from '@upstash/redis';
+import crypto from 'crypto';
 
 const app = express();
 app.use(express.json());
@@ -338,6 +339,171 @@ app.post('/api/movies/result', async (req, res) => {
   } catch (err) {
     console.error('result error:', err);
     res.status(500).json({ error: '결과를 저장하지 못했어요.' });
+  }
+});
+
+/**
+ * ───────────────────────────────────────────────────────────────────────
+ * 우승 영화별 "한줄평 게시판"
+ * ───────────────────────────────────────────────────────────────────────
+ * 같은 영화를 1위로 뽑은 사람들끼리 한 줄짜리 짧은 리뷰를 남기고 볼 수 있는 미니
+ * 게시판이에요. 토스 로그인 없이, 사용자가 직접 정한 닉네임으로 글을 남겨요.
+ *
+ * 데이터 모델
+ *   moviecup:board:{movieId} → Redis LIST. 각 원소는 JSON 문자열
+ *     { id, nickname, text, createdAt, ownerToken }
+ *   최신 글이 리스트 맨 앞(LPUSH)에 오고, BOARD_MAX_POSTS(200)개를 넘으면
+ *   오래된 글은 LTRIM으로 잘라내요(무한정 쌓이지 않게).
+ *   ownerToken은 글쓴이에게만 응답으로 한 번 돌려주고, 클라이언트가 로컬에
+ *   저장해뒀다가 자기 글을 지울 때 다시 보내는 식으로 "내 글 삭제"를 구현해요.
+ *   (로그인이 없으니 완벽한 보안은 아니지만, 토큰을 모르면 못 지우니 충분해요.)
+ *
+ * 스팸/도배 방지
+ *   - IP당 BOARD_RATE_LIMIT_SECONDS(8초)에 한 번만 글을 쓸 수 있어요
+ *     (Upstash의 SET ... NX EX로 간단히 구현).
+ *   - 닉네임 1~12자, 한줄평 1~60자로 길이를 제한해요.
+ *   - 기본적인 금칙어 필터를 거쳐요(완벽하지 않은 간단 버전이에요. 매칭되면
+ *     아예 등록을 막고 400을 돌려줘요. 부분 치환/검열은 하지 않아요).
+ */
+
+const BOARD_MAX_POSTS = 200;
+const BOARD_RATE_LIMIT_SECONDS = 8;
+const BOARD_NICKNAME_MAX = 12;
+const BOARD_TEXT_MAX = 60;
+
+// 아주 기본적인 금칙어 목록이에요. 완전하지 않으니 운영하면서 계속 추가해주세요.
+const BANNED_WORDS = [
+  '씨발', '시발', 'ㅅㅂ', 'ㅆㅂ', '병신', 'ㅂㅅ', '개새끼', '개새', '좆', '지랄',
+  '닥쳐', '꺼져', '미친놈', '미친년', '창녀', '걸레', '죽어라', '죽여',
+  'fuck', 'shit', 'bitch', 'asshole',
+];
+
+function getBoardKey(movieId) {
+  return `moviecup:board:${movieId}`;
+}
+
+function containsBannedWord(text) {
+  const normalized = text.toLowerCase().replace(/\s+/g, '');
+  return BANNED_WORDS.some((w) => normalized.includes(w.toLowerCase()));
+}
+
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.length > 0) {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+/** IP당 짧은 쿨다운. 쿨다운 중이면 false를 돌려줘요. */
+async function checkAndSetRateLimit(ip) {
+  const key = `moviecup:board:ratelimit:${ip}`;
+  const ok = await redis.set(key, '1', { nx: true, ex: BOARD_RATE_LIMIT_SECONDS });
+  return ok !== null; // 세팅에 성공했으면(기존 키가 없었으면) 글쓰기 허용
+}
+
+// GET /api/movies/:movieId/board → 해당 영화의 한줄평 목록(최신순)
+app.get('/api/movies/:movieId/board', async (req, res) => {
+  try {
+    const movieId = req.params.movieId;
+    const key = getBoardKey(movieId);
+    const raw = await redis.lrange(key, 0, BOARD_MAX_POSTS - 1);
+    const posts = raw
+      .map((item) => {
+        // @upstash/redis는 저장할 때 넣은 JSON을 자동으로 파싱해서 객체로 돌려줄 수도,
+        // 문자열 그대로 돌려줄 수도 있어서 양쪽 다 처리해요.
+        const parsed = typeof item === 'string' ? JSON.parse(item) : item;
+        // ownerToken은 글쓴이 본인 확인용이라 목록 응답에는 절대 포함하지 않아요.
+        const { ownerToken, ...publicPost } = parsed;
+        return publicPost;
+      })
+      .filter(Boolean);
+    res.json({ posts });
+  } catch (err) {
+    console.error('board get error:', err);
+    res.status(500).json({ error: '한줄평을 불러오지 못했어요.' });
+  }
+});
+
+// POST /api/movies/:movieId/board → 한줄평 등록. body: { nickname, text }
+app.post('/api/movies/:movieId/board', async (req, res) => {
+  try {
+    const movieId = req.params.movieId;
+    const nickname = typeof req.body?.nickname === 'string' ? req.body.nickname.trim() : '';
+    const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+
+    if (!nickname || nickname.length > BOARD_NICKNAME_MAX) {
+      return res.status(400).json({ error: `닉네임은 1~${BOARD_NICKNAME_MAX}자로 입력해주세요.` });
+    }
+    if (!text || text.length > BOARD_TEXT_MAX) {
+      return res.status(400).json({ error: `한줄평은 1~${BOARD_TEXT_MAX}자로 입력해주세요.` });
+    }
+    if (containsBannedWord(nickname) || containsBannedWord(text)) {
+      return res.status(400).json({ error: '부적절한 표현이 포함되어 있어요. 다시 작성해주세요.' });
+    }
+
+    const ip = getClientIp(req);
+    const allowed = await checkAndSetRateLimit(ip);
+    if (!allowed) {
+      return res.status(429).json({ error: '글을 너무 빨리 올리고 있어요. 잠시 후 다시 시도해주세요.' });
+    }
+
+    const post = {
+      id: crypto.randomUUID(),
+      nickname,
+      text,
+      createdAt: Date.now(),
+      ownerToken: crypto.randomBytes(16).toString('hex'),
+    };
+
+    const key = getBoardKey(movieId);
+    const pipeline = redis.pipeline();
+    pipeline.lpush(key, JSON.stringify(post));
+    pipeline.ltrim(key, 0, BOARD_MAX_POSTS - 1);
+    await pipeline.exec();
+
+    // ownerToken은 글쓴이에게 딱 한 번, 이 응답으로만 돌려줘요.
+    const { ownerToken, ...publicPost } = post;
+    res.json({ ...publicPost, ownerToken });
+  } catch (err) {
+    console.error('board post error:', err);
+    res.status(500).json({ error: '한줄평을 등록하지 못했어요.' });
+  }
+});
+
+// DELETE /api/movies/:movieId/board/:postId → 본인 글 삭제. body: { ownerToken }
+app.delete('/api/movies/:movieId/board/:postId', async (req, res) => {
+  try {
+    const movieId = req.params.movieId;
+    const postId = req.params.postId;
+    const ownerToken = typeof req.body?.ownerToken === 'string' ? req.body.ownerToken : '';
+    if (!ownerToken) return res.status(400).json({ error: '잘못된 요청이에요.' });
+
+    const key = getBoardKey(movieId);
+    const raw = await redis.lrange(key, 0, BOARD_MAX_POSTS - 1);
+    const posts = raw.map((item) => (typeof item === 'string' ? JSON.parse(item) : item)).filter(Boolean);
+
+    const target = posts.find((p) => p.id === postId);
+    if (!target) return res.status(404).json({ error: '이미 삭제된 글이에요.' });
+    if (target.ownerToken !== ownerToken) {
+      return res.status(403).json({ error: '본인이 작성한 글만 지울 수 있어요.' });
+    }
+
+    const remaining = posts.filter((p) => p.id !== postId);
+    const pipeline = redis.pipeline();
+    pipeline.del(key);
+    if (remaining.length > 0) {
+      // 원래 순서(최신순)를 그대로 유지하려고 뒤에서부터 LPUSH로 다시 쌓아요.
+      for (let i = remaining.length - 1; i >= 0; i--) {
+        pipeline.lpush(key, JSON.stringify(remaining[i]));
+      }
+    }
+    await pipeline.exec();
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('board delete error:', err);
+    res.status(500).json({ error: '글을 지우지 못했어요.' });
   }
 });
 
