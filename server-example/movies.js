@@ -320,20 +320,37 @@ app.post('/api/movies/result', async (req, res) => {
     const pipeline = redis.pipeline();
     pipeline.incr('moviecup:totalPlays');
     pipeline.zincrby('moviecup:winCounts', 1, String(winnerId));
-    const [totalPlays, myWinCount] = await pipeline.exec();
+    // 리더보드에 제목을 보여주려면 영화 id만으론 부족해서, 우승 집계와 별도로
+    // "id → 제목" 매핑을 Redis 해시에 저장해둬요. 클라이언트가 보내주는 winnerTitle을
+    // 그대로 믿고 저장하는 거라 100% 검증된 값은 아니지만, 악용돼도 큰 문제가 없는
+    // 표시용 데이터라 괜찮아요. 요청마다 매번 덮어써서 최신 제목으로 유지돼요.
+    if (winnerTitle) pipeline.hset('moviecup:movieTitles', { [String(winnerId)]: String(winnerTitle) });
+    const pipelineResults = await pipeline.exec();
+    const [totalPlays, myWinCount] = pipelineResults;
 
     const top10 = await redis.zrange('moviecup:winCounts', 0, 9, { rev: true, withScores: true });
     // top10은 [member, score, member, score, ...] 형태예요.
+    const movieIds = [];
+    for (let i = 0; i < top10.length; i += 2) movieIds.push(top10[i]);
+
+    // TOP 10에 오른 영화들의 제목을 한 번에 조회해서 같이 내려줘요.
+    const titles = movieIds.length > 0 ? await redis.hmget('moviecup:movieTitles', ...movieIds) : {};
+
     const leaderboard = [];
     for (let i = 0; i < top10.length; i += 2) {
-      leaderboard.push({ movieId: top10[i], wins: Number(top10[i + 1]) });
+      const movieId = top10[i];
+      leaderboard.push({
+        movieId,
+        wins: Number(top10[i + 1]),
+        title: titles?.[movieId] || null,
+      });
     }
 
     res.json({
       totalPlays: Number(totalPlays),
       myWinCount: Number(myWinCount),
       myWinPct: Math.round((Number(myWinCount) / Number(totalPlays)) * 1000) / 10,
-      leaderboard, // [{movieId, wins}] — 제목은 클라이언트가 이미 갖고 있는 값으로 매핑
+      leaderboard, // [{movieId, wins, title}]
       winnerTitle: winnerTitle || null,
     });
   } catch (err) {

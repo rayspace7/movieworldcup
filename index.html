@@ -423,7 +423,15 @@
     color:var(--ink);
     margin-bottom:4px;
   }
-  .winner-year{ font-size:12.5px; color:var(--ink-soft); margin-bottom:22px; }
+  .winner-year{ font-size:12.5px; color:var(--ink-soft); margin-bottom:14px; }
+  .board-entry-btn{
+    display:inline-flex; align-items:center; gap:6px;
+    background:var(--surface); border:1px solid var(--gold-soft);
+    border-radius:999px; padding:8px 16px;
+    font-family:'Noto Serif KR', serif; font-weight:700; font-size:12.5px;
+    color:var(--gold); cursor:pointer; margin-bottom:22px;
+  }
+  .board-entry-btn:active{ transform:scale(0.97); }
   .stat-box{
     width:100%;
     background:var(--surface);
@@ -644,6 +652,7 @@
     <img class="winner-poster" id="winnerPoster" src="" alt="">
     <div class="winner-title" id="winnerTitle"></div>
     <div class="winner-year" id="winnerYear"></div>
+    <button class="board-entry-btn" onclick="openBoard()">💬 한줄평 나누기</button>
 
     <div class="stat-box">
       <div class="stat-label">이 영화를 우승으로 뽑은 사람</div>
@@ -656,7 +665,6 @@
     </div>
 
     <button class="cta" onclick="playAgain()">다시 하기</button>
-    <button class="cta ghost" onclick="openBoard()">같은 영화를 뽑은 사람들과 한줄평 나누기</button>
     <div class="error-msg" id="resultError"></div>
   </div>
 
@@ -1014,85 +1022,103 @@ function playChampionSound(){
   playBell(ctx, 2093.00, now + 2.5,  1.1, { gain: 0.08, wet: 0.5  }); // C7
 }
 
-// ── 배경음악: 잔잔한 피아노 루프 ───────────────────────────────────────────
-// 타악기나 금관 없이 피아노 음색 하나로만, 중저음 위주(A2~C4 안쪽, 가장 높은 음도
-// G4를 안 넘어요)로 천천히 아르페지오를 반복하는 차분한 루프예요. 음 하나하나가
-// 길게 울려 퍼지도록(페달을 밟은 느낌) 겹쳐서, 또박또박 끊기지 않고 잔잔하게
-// 흘러가게 했어요. 대진표 화면이 떠 있는 동안 계속 깔리다가, 우승작이 발표되는
-// 순간 멈추고 팡파르로 넘어가요.
-const BGM_TEMPO = 66;                      // 느린 템포
-const BGM_STEP_SEC = 60 / BGM_TEMPO;       // 4분음표 간격
+// ── 배경음악: 류이치 사카모토풍 피아노 루프 ─────────────────────────────────
+// 피아노 음색 하나로, 조금 더 빠른 템포의 흐르는 아르페지오를 반복하는 루프예요.
+// (D단조 - B♭ - F - C 진행을 8분음표로 오르내리며 연주해요.) 기계적으로 들리지
+// 않도록 두 가지를 신경썼어요:
+//   1) 음색 — 유니즌을 살짝 디튠해서 겹치고(코러스감), 실제 피아노줄의 배음이
+//      정수배에서 살짝 어긋나는("인하모닉") 특성을 흉내 낸 배음을 하나 섞고,
+//      저역통과 필터가 타건 직후엔 밝았다가 음이 잦아들수록 어두워지게 스윕해서
+//      "댕—" 하고 울리다 사그라드는 피아노 특유의 질감을 내요.
+//   2) 연주 — 모든 음을 한 치 오차 없이 똑같은 타이밍/세기로 치면 기계처럼
+//      들리니, 음마다 아주 작은 타이밍 흔들림과 세기 흔들림을 랜덤으로 줘서
+//      사람이 치는 듯한 미묘한 흔들림(휴머나이즈)을 더했어요.
+// 대진표 화면이 떠 있는 동안 계속 깔리다가, 우승작이 발표되는 순간 멈추고
+// 팡파르로 넘어가요.
+const BGM_TEMPO = 88;                        // 예전(66)보다 빠르게
+const BGM_STEP_SEC = 60 / BGM_TEMPO / 2;     // 8분음표 간격
 const BGM_LOOKAHEAD_SEC = 0.15;
 const BGM_SCHEDULER_INTERVAL_MS = 50;
-const BGM_NOTE_DURATION = 2.0;             // 다음 음이 쳐진 뒤에도 한참 더 울려서 음끼리 겹쳐요(페달 효과)
+const BGM_NOTE_DURATION = 1.1;               // 다음 음들과 살짝 겹치며 자연스럽게 이어져요
 
-// 4마디를 도는 잔잔한 아르페지오(Am - F - C - G). 전부 중저음역이라 가장 높은 음도
-// G4(196Hz 대)를 넘지 않아요.
+// 4마디(Dm - B♭ - F - C)를 도는 아르페지오. 마디마다 낮은음에서 높은음으로
+// 올라갔다가 다시 내려오는 모양이라(단순 반복이 아니라) 흐르는 느낌을 줘요.
 const BGM_PATTERN = [
-  [110.00, 130.81, 164.81, 130.81], // Am: A2 - C3 - E3 - C3
-  [87.31,  110.00, 130.81, 174.61], // F : F2 - A2 - C3 - F3
-  [130.81, 164.81, 196.00, 164.81], // C : C3 - E3 - G3 - E3
-  [98.00,  123.47, 146.83, 196.00], // G : G2 - B2 - D3 - G3
+  [146.83, 174.61, 220.00, 293.66, 349.23, 220.00, 174.61, 146.83], // Dm : D3-F3-A3-D4-F4-A3-F3-D3
+  [116.54, 146.83, 174.61, 233.08, 293.66, 233.08, 174.61, 146.83], // B♭ : B♭2-D3-F3-B♭3-D4-B♭3-F3-D3
+  [87.31,  110.00, 130.81, 174.61, 220.00, 174.61, 130.81, 110.00], // F  : F2-A2-C3-F3-A3-F3-C3-A2
+  [130.81, 164.81, 196.00, 261.63, 329.63, 261.63, 196.00, 164.81], // C  : C3-E3-G3-C4-E4-C4-G3-E3
 ];
 
-// 피아노 음 하나 — 정수배가 아닌 배음 몇 개를 겹쳐서 피아노 특유의 통울림을 내고,
-// 타건 순간 아주 짧고 작은 노이즈를 섞어 해머가 현을 때리는 느낌을 더해요.
+// 피아노 음 하나 — 중심음 + 살짝 디튠된 유니즌 2개(코러스감) + 인하모닉 배음
+// 1개를 겹치고, 저역통과 필터를 타건 직후엔 밝게 열었다가 음이 잦아들수록
+// 점점 어둡게 닫아서 피아노 특유의 "댕그랑 → 은은하게 사그라듦" 질감을 내요.
 function playPianoNote(ctx, freq, time, opts = {}){
-  const { gain = 0.1, wet = 0.42 } = opts;
-  const partials = [
-    { mul: 1.0,  level: 1.0,  decayMul: 1.0 },
-    { mul: 2.01, level: 0.22, decayMul: 0.6 },
-    { mul: 3.0,  level: 0.08, decayMul: 0.4 },
-  ];
+  const { gain = 0.09, wet = 0.4, duration = BGM_NOTE_DURATION } = opts;
   const bus = ctx.createGain();
   bus.gain.value = gain;
-  bus.connect(masterGain);
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.Q.value = 0.3;
+  filter.frequency.setValueAtTime(freq * 6.5, time);
+  filter.frequency.exponentialRampToValueAtTime(Math.max(freq * 1.6, 380), time + duration * 0.65);
+  bus.connect(filter);
+  filter.connect(masterGain);
   const wetGain = ctx.createGain();
   wetGain.gain.value = wet;
-  bus.connect(wetGain);
+  filter.connect(wetGain);
   wetGain.connect(reverbSend);
 
+  const partials = [
+    { mul: 1.0,   level: 1.0,  detune: 0 },
+    { mul: 1.0,   level: 0.42, detune: 7 },   // 살짝 날카롭게 디튠된 유니즌
+    { mul: 1.0,   level: 0.42, detune: -7 },  // 살짝 낮게 디튠된 유니즌 → 둘이 겹치면 코러스감
+    { mul: 2.756, level: 0.085, detune: 0 },  // 정수배가 아닌 배음 → 통울림 느낌
+  ];
   partials.forEach((p) => {
     const osc = ctx.createOscillator();
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(freq * p.mul, time);
-    const dur = BGM_NOTE_DURATION * p.decayMul;
+    if (p.detune) osc.detune.setValueAtTime(p.detune, time);
     const g = ctx.createGain();
-    g.gain.setValueAtTime(0, time);
-    g.gain.linearRampToValueAtTime(p.level, time + 0.006); // 건반을 누르는 빠른 어택
-    g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.exponentialRampToValueAtTime(Math.max(p.level, 0.001), time + 0.014); // 건반을 누르는 어택(완전히 뚝 끊기지 않게 지수 램프)
+    g.gain.exponentialRampToValueAtTime(0.0001, time + duration);
     osc.connect(g).connect(bus);
     osc.start(time);
-    osc.stop(time + dur + 0.05);
+    osc.stop(time + duration + 0.05);
   });
 
-  // 해머 타격감을 주는 아주 짧고 작은 노이즈 클릭
+  // 해머 타격감을 주는 아주 짧고 여린 노이즈 클릭(너무 크면 디지털 클릭음처럼 들려서 살짝만)
   const noiseSrc = ctx.createBufferSource();
   noiseSrc.buffer = getNoiseBuffer(ctx);
   const noiseFilter = ctx.createBiquadFilter();
   noiseFilter.type = 'bandpass';
-  noiseFilter.frequency.setValueAtTime(freq * 2.2, time);
-  noiseFilter.Q.value = 1;
+  noiseFilter.frequency.setValueAtTime(freq * 2.8, time);
+  noiseFilter.Q.value = 0.8;
   const noiseGain = ctx.createGain();
-  noiseGain.gain.setValueAtTime(0, time);
-  noiseGain.gain.linearRampToValueAtTime(gain * 0.15, time + 0.002);
-  noiseGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.035);
+  noiseGain.gain.setValueAtTime(0.0001, time);
+  noiseGain.gain.exponentialRampToValueAtTime(Math.max(gain * 0.09, 0.001), time + 0.004);
+  noiseGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.03);
   noiseSrc.connect(noiseFilter).connect(noiseGain).connect(masterGain);
   noiseSrc.start(time);
-  noiseSrc.stop(time + 0.04);
+  noiseSrc.stop(time + 0.035);
 }
 
-// 한 스텝(4분음표 하나)마다 호출돼요. 4마디(16스텝)를 계속 돌면서 코드가 천천히
-// 바뀌어요. 각 마디의 첫 박만 살짝 또렷하게, 나머지는 더 여리게 쳐서 자연스러운
-// 셈여림을 줘요.
+// 한 스텝(8분음표 하나)마다 호출돼요. 4마디(32스텝)를 계속 돌면서 코드가
+// 바뀌어요. 각 마디의 첫 박만 살짝 또렷하게 치고, 음마다 아주 작은 타이밍/세기
+// 흔들림을 랜덤으로 줘서 메트로놈처럼 기계적으로 들리지 않게 해요.
 function scheduleBgmStep(ctx, time, step){
-  const totalSteps = BGM_PATTERN.length * 4;
+  const totalSteps = BGM_PATTERN.length * 8;
   const idx = step % totalSteps;
-  const bar = Math.floor(idx / 4);
-  const noteInBar = idx % 4;
+  const bar = Math.floor(idx / 8);
+  const noteInBar = idx % 8;
   const freq = BGM_PATTERN[bar][noteInBar];
   const accent = noteInBar === 0;
-  playPianoNote(ctx, freq, time, { gain: accent ? 0.095 : 0.075, wet: 0.42 });
+  const timingJitter = (Math.random() - 0.5) * 0.016;   // ±8ms
+  const velocityJitter = 1 + (Math.random() - 0.5) * 0.22; // ±11%
+  const baseGain = accent ? 0.1 : 0.07;
+  playPianoNote(ctx, freq, time + timingJitter, { gain: Math.max(0.02, baseGain * velocityJitter), wet: 0.4 });
 }
 
 function bgmSchedulerTick(){
@@ -1606,9 +1632,11 @@ async function finishTournament(winner){
 
     const listEl = document.getElementById('leaderboardList');
     listEl.innerHTML = stats.leaderboard.map((row, i) => {
+      // 서버가 내려주는 제목을 우선 쓰고(다른 사람이 우승시킨 영화라 지금 세션엔 없는 경우가
+      // 많아요), 혹시 없으면 지금 세션에서 본 영화 정보로 한 번 더 보완해요.
       const info = idToInfo.get(String(row.movieId));
-      const name = info ? info.title : `영화 #${row.movieId}`;
-      return `<div class="lb-row"><div class="lb-rank">${i+1}</div><div class="lb-name">${name}</div><div class="lb-wins">${row.wins}회</div></div>`;
+      const name = row.title || (info ? info.title : `영화 #${row.movieId}`);
+      return `<div class="lb-row"><div class="lb-rank">${i+1}</div><div class="lb-name">${escapeHtml(name)}</div><div class="lb-wins">${row.wins}회</div></div>`;
     }).join('');
   }catch(e){
     console.error(e);
