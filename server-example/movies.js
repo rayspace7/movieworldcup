@@ -2,8 +2,8 @@
  * 나만의 명작영화 월드컵 백엔드 예제 (Express, TMDB API + Upstash Redis)
  *
  * 전체 흐름
- * 1. 장르 / 국가(한국·미국·유럽·일본·중화권·그외 모든 국가) / 시대(1970년대 이전·
- *    1980~1990년대·2000년대 이후) 세 가지를 "각각 선택 또는 생략"할 수 있고, 고른
+ * 1. 장르 / 국가(한국·미국·유럽·일본·중화권·그외 모든 국가) / 시대(1950년대 이전·
+ *    1960~1970년대·1980~1990년대·2000년대 이후) 세 가지를 "각각 선택 또는 생략"할 수 있고, 고른
  *    조건을 모두 합쳐서(AND) TMDB에서 영화를 긁어와요. 예: 국가=한국영화 + 장르=드라마 +
  *    시대=2000년대 이후 → "2000년대 이후에 나온 한국 드라마 영화" 풀을 만들어요.
  *    조합마다 Upstash에 "따로" 캐싱해요 (조합별 캐시 키가 달라요. getPoolKey 참고).
@@ -26,9 +26,9 @@
  *    - TMDB Rate limit은 넉넉한 편이지만, 매 요청마다 새로 긁으면 느리고 낭비라 캐싱이 필수예요.
  * 2. GET /api/movies/random16?genre=xx&country=yy&era=zz → 세 파라미터 모두 선택 사항이에요
  *    (아무것도 안 주면 "모든 영화"). genre는 TMDB 장르 ID(예: 18=드라마), country는
- *    korean/american/european/japanese/chinese/other 중 하나, era는 era_pre1970/
- *    era_80_90/era_2000 중 하나예요. 해당 조합 풀 중 16편을 무작위로 뽑아 클라이언트에
- *    내려줘요.
+ *    korean/american/european/japanese/chinese/other 중 하나, era는 era_pre1950/
+ *    era_60_70/era_80_90/era_2000 중 하나예요. 해당 조합 풀 중 16편을 무작위로 뽑아
+ *    클라이언트에 내려줘요.
  * 3. POST /api/movies/result → 최종 우승작 id를 받아 Upstash에 우승 카운터를 1 올리고,
  *    전체 플레이 수 대비 이 영화가 우승한 비율(%), TOP 10 리더보드를 계산해서 돌려줘요.
  *
@@ -131,9 +131,14 @@ const COUNTRY_CONFIG = {
   },
 };
 
-/** 시대별 TMDB 날짜 파라미터 + 이 시대만 단독으로 고를 때 쓰는 기준 투표수. */
+/**
+ * 시대별 TMDB 날짜 파라미터 + 이 시대만 단독으로 고를 때 쓰는 기준 투표수.
+ * 옛날 영화일수록 TMDB에 투표수가 많이 쌓인 작품 자체가 적어서, 기준 투표수를
+ * 더 낮게 잡아야 16편 이상이 모여요.
+ */
 const ERA_CONFIG = {
-  era_pre1970: { baseMinVoteCount: 80, params: { 'primary_release_date.lte': '1969-12-31' } },
+  era_pre1950: { baseMinVoteCount: 40, params: { 'primary_release_date.lte': '1949-12-31' } },
+  era_60_70: { baseMinVoteCount: 100, params: { 'primary_release_date.gte': '1960-01-01', 'primary_release_date.lte': '1979-12-31' } },
   era_80_90: { baseMinVoteCount: 300, params: { 'primary_release_date.gte': '1980-01-01', 'primary_release_date.lte': '1999-12-31' } },
   era_2000: { baseMinVoteCount: 1000, params: { 'primary_release_date.gte': '2000-01-01' } },
 };

@@ -670,7 +670,6 @@
 
   <div class="screen" id="screen-board">
     <div class="board-header">
-      <button type="button" class="board-back-btn" onclick="closeBoard()" aria-label="뒤로가기">←</button>
       <img class="board-movie-poster" id="boardPoster" src="" alt="">
       <div>
         <div class="board-movie-title" id="boardTitle"></div>
@@ -1191,7 +1190,8 @@ const COUNTRIES = [
 ];
 
 const ERAS = [
-  { id: 'era_pre1970', name: '1970년대 이전' },
+  { id: 'era_pre1950', name: '1950년대 이전' },
+  { id: 'era_60_70', name: '1960~1970년대' },
   { id: 'era_80_90', name: '1980~1990년대' },
   { id: 'era_2000', name: '2000년대 이후' },
 ];
@@ -1323,30 +1323,64 @@ function switchScreen(id){
 function goTo(id){ history.pushState({ screen: id }, ''); switchScreen(id); }
 function replaceWith(id){ history.replaceState({ screen: id }, ''); switchScreen(id); }
 
+// ⚠️ 이 adGroupId는 토스 광고주 콘솔에서 "이 앱 전용으로" 발급받아 등록해야 하는
+// 값이에요. 값이 틀렸거나, 이 앱에 아직 광고가 연결/승인되지 않았으면 loadFullScreenAd가
+// 'loaded' 이벤트를 영영 보내지 않고, 그러면 광고 없이 바로 다음 단계로 넘어가 버려요
+// (사용자 입장에선 "광고 보기를 눌렀는데 광고가 안 뜨고 그냥 넘어간다"로 보여요).
+// 광고가 계속 안 뜨면 토스 콘솔에서 이 adGroupId가 실제로 이 앱(movieworldcup)에
+// 발급·승인된 전면 광고 그룹인지부터 확인해주세요.
 const AD_GROUP_ID_INTERSTITIAL = "ait.v2.live.82a2fa9ce30e4f21";
 let interstitialLoaded = false;
+let interstitialLoading = false;
 
 function preloadInterstitial(){
-  if (!safeIsSupported(() => loadFullScreenAd.isSupported())) return;
-  interstitialLoaded = false;
+  if (interstitialLoading || interstitialLoaded) return;
+  if (!safeIsSupported(() => loadFullScreenAd.isSupported())) {
+    console.warn('[전면광고] loadFullScreenAd를 지원하지 않는 환경이에요. (토스 앱이 아니거나, 이 앱에 광고 기능이 아직 연결되지 않았을 수 있어요)');
+    return;
+  }
+  interstitialLoading = true;
   loadFullScreenAd({
     options: { adGroupId: AD_GROUP_ID_INTERSTITIAL },
-    onEvent: (e) => { if (e.type === 'loaded') interstitialLoaded = true; },
-    onError: (e) => console.error('전면 광고 로드 실패:', e),
+    onEvent: (e) => {
+      if (e.type === 'loaded') { interstitialLoaded = true; interstitialLoading = false; }
+    },
+    onError: (e) => {
+      interstitialLoading = false;
+      console.error('[전면광고] 로드 실패 — adGroupId가 이 앱에 등록된 실제 광고 그룹인지 토스 콘솔에서 확인해주세요:', e);
+    },
   });
 }
 preloadInterstitial();
+// 앱을 켜자마자 부른 첫 preload가 아직 끝나기 전일 수 있으니, 몇 초 뒤 한 번 더 시도해봐요.
+setTimeout(preloadInterstitial, 4000);
 
-function withInterstitialIfNeeded(proceed){
-  const shouldShowAd = interstitialLoaded && safeIsSupported(() => showFullScreenAd.isSupported());
-  if (!shouldShowAd) { proceed(); return; }
+function showInterstitialNow(proceed){
+  interstitialLoaded = false;
   showFullScreenAd({
     options: { adGroupId: AD_GROUP_ID_INTERSTITIAL },
     onEvent: (e) => {
       if (e.type === 'dismissed' || e.type === 'failedToShow') { preloadInterstitial(); proceed(); }
     },
-    onError: (e) => { console.error('전면 광고 노출 실패:', e); preloadInterstitial(); proceed(); },
+    onError: (e) => { console.error('[전면광고] 노출 실패:', e); preloadInterstitial(); proceed(); },
   });
+}
+
+function withInterstitialIfNeeded(proceed){
+  if (!safeIsSupported(() => showFullScreenAd.isSupported())) {
+    console.warn('[전면광고] showFullScreenAd를 지원하지 않는 환경이라 광고 없이 진행해요.');
+    proceed();
+    return;
+  }
+  if (interstitialLoaded){
+    showInterstitialNow(proceed);
+    return;
+  }
+  // 아직 로드가 안 끝났으면 기다리지 않고 바로 진행해요. 다음 기회를 위해 백그라운드로
+  // 로드만 다시 시도해둬요(여기서 끝날 때까지 기다리지는 않아요).
+  console.warn('[전면광고] 아직 로드되지 않아서 광고 없이 바로 진행해요.');
+  preloadInterstitial();
+  proceed();
 }
 
 function showAdModal(action, description){
@@ -1874,7 +1908,6 @@ window.goTo = goTo;
 window.selectFilter = selectFilter;
 window.startFilteredTournament = startFilteredTournament;
 window.openBoard = openBoard;
-window.closeBoard = closeBoard;
 window.submitBoardPost = submitBoardPost;
 window.deleteBoardPost = deleteBoardPost;
 </script>
